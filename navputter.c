@@ -1,9 +1,15 @@
+#include "VirtualSerialMouse.h"
+#include "myutil.h"
+#include "compat/minmea_compat_windows.h"
+
 void poll_buttons(void);
 void run_event(uint8_t event_type, uint8_t event_number );
 void reset_factory_default(void);
 void start_timer(void);
 
+extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 #define MAX_KEYSTROKES 4
+#define CTC_MATCH_OVERFLOW ((F_CPU / 1000) / 8)
 
 #define USAGE_LIST\
     USAGE( "----------------------------------------" )\
@@ -114,7 +120,7 @@ void start_timer(void)
 void reset_factory_default()
 {
     dbgprint("reset to factory default\n");
-
+#if 0
     #define KEY_SEQ(e,s) \
     {\
         key_sequences[e]=s;\
@@ -123,7 +129,7 @@ void reset_factory_default()
     }
     KEY_SEQ_LIST
     #undef KEY_SEQ 
-
+#endif
 }
 
 
@@ -272,39 +278,39 @@ void read_keypad(void)
     NMEA( MINMEA_SENTENCE_ZDA, minmea_sentence_zda, minmea_parse_zda, nmea_zda_in )
 
 
-void nmea_rmc_in( struct minmea_parse_rmc *rmc )
+void nmea_rmc_in( struct minmea_sentence_rmc *rmc )
 {
     dbgprint("I got rmc\n");
 }    
 
-void nmea_gga_in( struct minmea_parse_gga *gga )
+void nmea_gga_in( struct minmea_sentence_gga *gga )
 {
     dbgprint("I got gga\n");
 }    
 
-void nmea_gsa_in( struct minmea_parse_gsa *gsa )
+void nmea_gsa_in( struct minmea_sentence_gsa *gsa )
 {
     dbgprint("I got gsa\n");
 }    
 
-void nmea_gll_in( struct minmea_parse_gsa *gll )
+void nmea_gll_in( struct minmea_sentence_gll *gll )
 {
     dbgprint("I got gll\n");
 }    
 
-void nmea_gst_in( struct minmea_parse_gst *gst )
+void nmea_gst_in( struct minmea_sentence_gst *gst )
 {
     dbgprint("I got gst\n");
 }    
-void nmea_gsv_in( struct minmea_parse_gst *gsv )
+void nmea_gsv_in( struct minmea_sentence_gsv *gsv )
 {
     dbgprint("I got gsv\n");
 }    
-void nmea_vtg_in( struct minmea_parse_vtg *vtg )
+void nmea_vtg_in( struct minmea_sentence_vtg *vtg )
 {
     dbgprint("I got vtg\n");
 }    
-void nmea_zda_in( struct minmea_parse_zda *vzda )
+void nmea_zda_in( struct minmea_sentence_zda *zda )
 {
     dbgprint("I got zda\n");
 }    
@@ -312,15 +318,16 @@ void nmea_zda_in( struct minmea_parse_zda *vzda )
 
 void nmea_input( FILE *fp, char *input )
 {
-    uint8_t id = minmea_sentence_id minmea_sentence_id(input, 1);
-#define NMEA(e,f,p,t)
+    uint8_t id = minmea_sentence_id(input, 1);
+#define NMEA(e,t,p,f)\
     {\
-        t parse;\
+        struct t parse;\
         if ( e == id )\
         {\
-            if ( f(&parse,input) )\
+            if ( p(&parse,input) )\
             {\
                 fprintf(fp, "nmea valid\n\r");\
+                f(&parse);\
             }\
             else\
             {\
@@ -341,7 +348,7 @@ USAGE_LIST
 #undef USAGE
 
 #define PAD_SZ 10
-#define CMD(e, x, f, h) fprintf( fp, "cmd: %*susage %s\n\r",#x,PAD_SZ-strlen(#x),"",h );
+#define CMD(e, x, f, h) fprintf( fp, "cmd: %s    usage: %s\n\r",#x,h );
 CMD_LIST
 #undef CMD
 fprintf( fp, "Enter Command:\n\r");
@@ -349,12 +356,13 @@ fprintf( fp, "Enter Command:\n\r");
 
 typedef struct eeprom_header
 {
-    uint8_t version
+    uint8_t version;
     uint8_t rows;
     uint8_t cols;
     uint8_t unused;
 }eeprom_header_t;
 
+#define EEPROM_KEYMAP_BASE ((char *)NULL + sizeof( eeprom_header_t ))
 
 
 eeprom_header_t global_config = { 0, 4, 4, 0 };         /* 4 x 4 by default */
@@ -364,38 +372,48 @@ eeprom_header_t global_config = { 0, 4, 4, 0 };         /* 4 x 4 by default */
 
 void cmd_dump( FILE *fp, char *str )
 {
-    uint16_t *ptr = (uint16_t *)((char *)NULL + sizeof( eeprom_header_t ));
-    fprintf(fp, "Navputter ver=%d, %d keys, %dx%d\n\r");
+    uint16_t *ptr = (uint16_t *)EEPROM_KEYMAP_BASE;
+    fprintf(fp, "Navputter ver=%d, %dx%d keymap\n\r", global_config.version, global_config.rows, global_config.cols );
     fprintf(fp, "keymap dump:\n\r");
 
+    uint16_t map[MAX_KEYSTROKES];
+    uint8_t ix;
     uint8_t i;
     for ( i=0; i< global_config.cols * global_config.rows; i++ )
     {
-        uint16_t map[MAX_KEYSTROKES];
+        ix=0;
         map[ix++] = eeprom_read_word( ptr++ );
         map[ix++] = eeprom_read_word( ptr++ );
         map[ix++] = eeprom_read_word( ptr++ );
         map[ix++] = eeprom_read_word( ptr++ );
-        fprintf( fp, "key %d : %x %x, %x \n\r", map[0], map[1], map[2], map[3] );
+        fprintf( fp, "key %d : %x %x %x %x\n\r", i, map[0], map[1], map[2], map[3] );
     }
 }
 
 void cmd_set( FILE *fp, char *str )
 {
-    uint16_t map[MAX_KEYSTROKES]={0};
-    c = strchr( str, ' ' );
+    char *c = strchr( str, ' ' );
     if ( !c ) goto ERROR;
-    key_id = atoi( c+1 );
-    c = strchr( c+1 );
+    uint8_t key_id = atoi( c+1 );
+    fprintf( fp, "c+1 is %s, id is %d\n\r", c+1, key_id);
+    c = strchr( c+1, ' ' );
     if ( !c ) goto ERROR;
 
+    
+    uint16_t *key_ptr = (uint16_t *)(EEPROM_KEYMAP_BASE + (key_id * MAX_KEYSTROKES * 2));
+    uint8_t i;
     for ( i=0; i< MAX_KEYSTROKES; i++ )
     {
-        key = strtoul( fp, c, &c, 16 );
-        mod = strtoul( fp, c+1, &c, 16 );
-        map[i] = (uint16_t)key | (uint16_t)mod << 8;
+        uint16_t key = strtoul( c+1, &c, 16 );
+        uint16_t mod = strtoul( c+1, &c, 16 );
+        fprintf( fp, "writing key %d - %x %x %x (%p)\n\r", key_id, key, mod, (key<<8)|mod, key_ptr );
+        eeprom_write_word( key_ptr++, (key << 8) | mod ); 
+        c = strchr( c, ',' );
+        if ( !c ) break;
     }
-    fprintf( fp, "writing key %d => %x %x %x %x\n\r", map[0], map[1], map[2], map[3] );
+    return;
+ERROR:
+    fprintf( fp, "illagal format. No change.\n\r");
 }
 
 void cmd_input( FILE *fp, char *str )

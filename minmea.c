@@ -12,7 +12,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <time.h>
+#include "time.h"
 
 #define boolstr(s) ((s) ? "true" : "false")
 
