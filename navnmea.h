@@ -1,6 +1,7 @@
 #ifndef __NAVNMEA_H__
 #define __NAVNMEA_H__
 
+#include "minmea.h"
 
 void nmea_rmc_in( struct minmea_parse_rmc *rmc );
 void nmea_gga_in( struct minmea_parse_gga *gga );

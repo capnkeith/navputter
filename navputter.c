@@ -1,6 +1,4 @@
-#include "VirtualSerialMouse.h"
-#include "myutil.h"
-#include "compat/minmea_compat_windows.h"
+#include "navputter.h"
 
 void poll_buttons(void);
 void run_event(uint8_t event_type, uint8_t event_number );

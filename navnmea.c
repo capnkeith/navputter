@@ -1,9 +1,7 @@
 
 
-#include "navnmea.h"
 
-
-
+#include "navputter.h"
 
 #define NMEA_LIST\
     NMEA( MINMEA_SENTENCE_RMC, minmea_sentence_rmc, minmea_parse_rmc, nmea_rmc_in ) \
