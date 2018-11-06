@@ -1,2 +1,1 @@
-# navputter
-Hybrid mouse keyboard v-serial based on lufa for atmel usb AVRs. Designed for opencpn.
+If you are going to Nav, you don't want to putter
