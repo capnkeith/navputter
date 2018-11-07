@@ -7,7 +7,7 @@ void start_timer(void);
 
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 #define MAX_KEYSTROKES 4
-#define CTC_MATCH_OVERFLOW ((F_CPU / 1000) / 8)
+#define CTC_MATCH_OVERFLOW (uint8_t)(( (int)F_CPU / (int)1000) / (int)8)
 
 #define USAGE_LIST\
     USAGE( "----------------------------------------" )\
@@ -16,9 +16,12 @@ extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
     USAGE( "Command list:")\
 
 #define CMD_LIST \
-    CMD( CMD_DUMP, dump, cmd_dump, "dump all keys. Ex: dump" ) \
-    CMD( CMD_SET, set, cmd_set, "Set one key. Ex: set 5 0x55 0x10, 0x55 0x00" ) \
-    CMD( CMD_HELP, help, cmd_help, "Show this help" ) \
+    CMD( CMD_DUMP, dump, cmd_dump, "Dump current configuration. Ex: dump" ) \
+    CMD( CMD_SEQ,  seq,  cmd_seq,  "Set a key sequence. Ex: seq 5 0x55 0x10, 0x55 0x00" ) \
+    CMD( CMD_MAP,  map,  cmd_map,  "Map a key to a sequence. Ex: map 1 5" ) \
+    CMD( CMD_SAVE, save, cmd_save, "Save current configuration to eeprom. Ex: save" ) \
+    CMD( CMD_SHOW, show, cmd_show, "Show all key values" )\
+    CMD( CMD_HELP, help, cmd_help, "Show this help. Ex: help" ) \
 
 #define CMD(e, x, f, h) e,
 enum {
@@ -39,9 +42,6 @@ enum sequence_ids
     KEY_SEQ_LIST
 };
 #undef KEY_SEQ
-
-#define MAX_KEY_SEQUENCES 32        /* design for future flexibility */
-uint16_t key_sequences[ MAX_KEY_SEQUENCES ]={1,0};
 
 uint8_t buttons_pressed=0;
 
@@ -91,6 +91,37 @@ int once=0;
  
 volatile uint32_t ticks;
 long milliseconds_since;
+
+
+typedef struct eeprom_header
+{
+    uint8_t version;
+    uint8_t rows;
+    uint8_t cols;
+    uint8_t unused;
+}eeprom_header_t;
+
+
+#define MAX_KEY_ROWS        4
+#define MAX_KEY_COLS        4
+#define MAX_KEY_SEQ         32
+#define MAX_KEYS_PER_SEQ    4
+typedef struct eeprom_layout
+{
+    eeprom_header_t config;
+    uint8_t         key_map[ MAX_KEY_ROWS * MAX_KEY_COLS ];  
+    uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];
+}eeprom_layout_t;
+
+
+#define EEPROM_KEY_MAP ((eeprom_layout_t *)NULL)->key_map
+#define EEPROM_KEY_SEQ ((eeprom_layout_t *)NULL)->key_seq
+
+eeprom_layout_t global_config={{1,4,4,0},{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}};
+
+#define EEPROM_KEYMAP_BASE ((char *)NULL + sizeof( eeprom_header_t ))
+
+
  
 ISR (TIMER1_COMPA_vect)
 {
@@ -279,43 +310,63 @@ CMD_LIST
 fprintf( fp, "Enter Command:\n\r");
 }
 
-typedef struct eeprom_header
-{
-    uint8_t version;
-    uint8_t rows;
-    uint8_t cols;
-    uint8_t unused;
-}eeprom_header_t;
-
-#define EEPROM_KEYMAP_BASE ((char *)NULL + sizeof( eeprom_header_t ))
 
 
-eeprom_header_t global_config = { 0, 4, 4, 0 };         /* 4 x 4 by default */
+
+
 
 //    eeprom_read_block( (void *)&eeprom_header, NULL, sizeof( eeprom_header_t ) );
 
 
 void cmd_dump( FILE *fp, char *str )
 {
-    uint16_t *ptr = (uint16_t *)EEPROM_KEYMAP_BASE;
-    fprintf(fp, "Navputter ver=%d, %dx%d keymap\n\r", global_config.version, global_config.rows, global_config.cols );
+    fprintf(fp, "Navputter ver=%d, %dx%d keymap\n\r", global_config.config.version, global_config.config.rows, global_config.config.cols );
     fprintf(fp, "keymap dump:\n\r");
-
-    uint16_t map[MAX_KEYSTROKES];
-    uint8_t ix;
-    uint8_t i;
-    for ( i=0; i< global_config.cols * global_config.rows; i++ )
+    
+    uint8_t c, r;
+    for ( c=0; c< global_config.config.cols; c++ )
     {
-        ix=0;
-        map[ix++] = eeprom_read_word( ptr++ );
-        map[ix++] = eeprom_read_word( ptr++ );
-        map[ix++] = eeprom_read_word( ptr++ );
-        map[ix++] = eeprom_read_word( ptr++ );
-        fprintf( fp, "key %d : %x %x %x %x\n\r", i, map[0], map[1], map[2], map[3] );
+        for ( r=0; r< global_config.config.rows; r++ )
+        {
+            fprintf(fp,"%2d ", global_config.key_map[ c*r ] );
+        }
+        fprintf(fp, "\n\r" );
+    }
+    fprintf(fp, "key sequences. Key map referrers to these:\n\r");
+    for ( r=0; r< MAX_KEY_SEQ; r++ )
+    {
+        fprintf( fp, "%d: ", r*c );
+        for (c=0; c< MAX_KEYS_PER_SEQ; c++ )
+        {
+            fprintf( fp, "%2x %2x,", 
+                (global_config.key_seq[r][c] & 0xff00) >> 8,
+                (global_config.key_seq[r][c] & 0x00ff) );
+        }
+        fprintf( fp, "\n\r");
     }
 }
 
-void cmd_set( FILE *fp, char *str )
+void cmd_map( FILE *fp, char *str )
+{
+    uint8_t key = atoi(str);
+    char *c = strchr( str, ' ' );
+    if ( !c )
+    {
+        fprintf(fp, "illegal format. Nothing chagned. Ex: map 1 2\n\r");
+        return;
+    } 
+    uint8_t seq = atoi(c+1);
+    global_config.key_map[key]=seq;
+    fprintf(fp, "successfully set key %d to seq %d\n", key, seq );
+    return;
+}
+
+void cmd_show( FILE *fp, char *str )
+{
+    dump_keycodes(fp);
+}
+
+void cmd_seq( FILE *fp, char *str )
 {
     char *c = strchr( str, ' ' );
     if ( !c ) goto ERROR;
@@ -325,14 +376,13 @@ void cmd_set( FILE *fp, char *str )
     if ( !c ) goto ERROR;
 
     
-    uint16_t *key_ptr = (uint16_t *)(EEPROM_KEYMAP_BASE + (key_id * MAX_KEYSTROKES * 2));
+    uint16_t *key_ptr = ((eeprom_layout_t *)NULL)->key_seq[key_id];
     uint8_t i;
     for ( i=0; i< MAX_KEYSTROKES; i++ )
     {
         uint16_t key = strtoul( c+1, &c, 16 );
         uint16_t mod = strtoul( c+1, &c, 16 );
-        fprintf( fp, "writing key %d - %x %x %x (%p)\n\r", key_id, key, mod, (key<<8)|mod, key_ptr );
-        eeprom_write_word( key_ptr++, (key << 8) | mod ); 
+        global_config.key_seq[ key_id ][ i  ] = (key << 8) | mod;
         c = strchr( c, ',' );
         if ( !c ) break;
     }
@@ -340,6 +390,13 @@ void cmd_set( FILE *fp, char *str )
 ERROR:
     fprintf( fp, "illagal format. No change.\n\r");
 }
+
+void cmd_save( FILE *fp, char *str )
+{
+    eeprom_write_block( (void *)&global_config, NULL, sizeof( global_config ) );
+    fprintf( fp, "config written to eeprom.\n\r");
+}
+
 
 void cmd_input( FILE *fp, char *str )
 {
@@ -352,7 +409,19 @@ CMD_LIST
 #undef CMD
 }
 
-
+void init_eeprom( void )
+{
+    eeprom_read_block( (void *)&global_config, NULL, sizeof( global_config ) );
+    if ( global_config.config.version == 0xff )
+    {
+        dbgprint("init factory default \n");
+        eeprom_write_block( NULL, (void *)&global_config, sizeof( global_config ) );
+    }
+    else
+    {
+        dbgprint("Navputter verson %d\n", global_config.config.version);
+    }
+}
 
 int main(void)
 {
@@ -367,7 +436,9 @@ int main(void)
     FILE stream;
     FILE *fp = &stream;
     CDC_Device_CreateStream(&VirtualSerial_CDC_Interface, &stream); /* open a file pointer to the serial */
-   
+
+    init_eeprom();
+ 
 #define MAX_LINE_SIZE 256                                           /* just a guess, how long is nmea anyhow */
     static char serial_input[MAX_LINE_SIZE+1];                      /* buffer to accumulate commands and nmea */
     static uint16_t ix=0;

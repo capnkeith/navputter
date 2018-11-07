@@ -1,7 +1,4 @@
 
-#include <stdlib.h>
-#include "uTFT_ST7735.h"
-#include "minmea.h"
 #define dbgprint( fmt, ... )\
 {\
     static char buf[80];\
