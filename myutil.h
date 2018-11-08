@@ -1,3 +1,4 @@
+#include "uTFT_ST7735.h"
 
 #define dbgprint( fmt, ... )\
 {\

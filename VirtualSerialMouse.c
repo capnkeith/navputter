@@ -84,21 +84,18 @@ USB_ClassInfo_HID_Device_t Device_HID_Interface =
 			},
 	};
 
-void poll_buttons(void);
-void run_event(uint8_t event_type, uint8_t event_number );
-void reset_factory_default(void);
-void start_timer(void);
 
 
-void lufa_mainloop(void)
-{
 
-    CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
-	HID_Device_USBTask(&Device_HID_Interface);
-	USB_USBTask();
-}
+ 
 
-/** Configures the board hardware and chip peripherals for the demo's functionality. */
+
+
+
+
+/** Main program entry point. This routine contains the overall program flow, including initial
+ *  setup of all components and the main program loop.
+ */
 void SetupHardware(void)
 {
 #if (ARCH == ARCH_AVR8)
@@ -319,4 +316,9 @@ void EVENT_CDC_Device_ControLineStateChanged(USB_ClassInfo_CDC_Device_t *const C
 	(void)HostReady;
 }
 
-
+void lufa_main_loop(void)
+{
+		CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
+		HID_Device_USBTask(&Device_HID_Interface);
+		USB_USBTask();
+}

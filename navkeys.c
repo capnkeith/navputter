@@ -1,4 +1,4 @@
-
+#include "navputter.h"
 
 #define KEY_MOD_LIST\
     MOD( HID_KEYBOARD_MODIFIER_LEFTCTRL  )\
@@ -243,22 +243,22 @@
 		KEY(HID_KEYBOARD_SC_MEDIA_FORWARD)\
 		KEY(HID_KEYBOARD_SC_MEDIA_CANCEL)\
 		KEY(HID_KEYBOARD_SC_MEDIA_SEARCH)\
-		KEY(HID_KEYBOARD_SC_MEDIA_SLEEP\
+		KEY(HID_KEYBOARD_SC_MEDIA_SLEEP)\
 		KEY(HID_KEYBOARD_SC_MEDIA_LOCK)\
 		KEY(HID_KEYBOARD_SC_MEDIA_RELOAD)\
 		KEY(HID_KEYBOARD_SC_MEDIA_CALCULATOR)
 
-#defiune PAD_SZ 20
+#define PAD_SZ 20
 
 void dump_keycodes(FILE *fp)
 {
     fprintf(fp,"Key modifier codes. These can be ORed together\n\r");
-#define MOD(e) fprintf(fp,"%s%*%d\n\r", #e, PAD_SZ - strlen( #e ), e );
+#define MOD(e) fprintf(fp,"%s%*d\n\r", #e, PAD_SZ - strlen( #e ), e );
 KEY_MOD_LIST
 #undef MOD
 
     fprintf(fp,"Key scan codes.\n\r");
-#define KEY(e) fpriuntf(fp, "%s%*&%d\n\r", #e, PAD_SZ - strlen( #e ), e );
+#define KEY(e) fprintf(fp, "%s%*d\n\r", #e, PAD_SZ - strlen( #e ), e );
 KEY_SCAN_LIST
 #undef KEY
 }

@@ -13,39 +13,39 @@
     NMEA( MINMEA_SENTENCE_ZDA, minmea_sentence_zda, minmea_parse_zda, nmea_zda_in )
 
 
-void nmea_rmc_in( struct minmea_parse_rmc *rmc )
+void nmea_rmc_in( struct minmea_sentence_rmc *rmc )
 {
     dbgprint("I got rmc\n");
 }    
 
-void nmea_gga_in( struct minmea_parse_gga *gga )
+void nmea_gga_in( struct minmea_sentence_gga *gga )
 {
     dbgprint("I got gga\n");
 }    
 
-void nmea_gsa_in( struct minmea_parse_gsa *gsa )
+void nmea_gsa_in( struct minmea_sentence_gsa *gsa )
 {
     dbgprint("I got gsa\n");
 }    
 
-void nmea_gll_in( struct minmea_parse_gsa *gll )
+void nmea_gll_in( struct minmea_sentence_gsa *gll )
 {
     dbgprint("I got gll\n");
 }    
 
-void nmea_gst_in( struct minmea_parse_gst *gst )
+void nmea_gst_in( struct minmea_sentence_gst *gst )
 {
     dbgprint("I got gst\n");
 }    
-void nmea_gsv_in( struct minmea_parse_gst *gsv )
+void nmea_gsv_in( struct minmea_sentence_gst *gsv )
 {
     dbgprint("I got gsv\n");
 }    
-void nmea_vtg_in( struct minmea_parse_vtg *vtg )
+void nmea_vtg_in( struct minmea_sentence_vtg *vtg )
 {
     dbgprint("I got vtg\n");
 }    
-void nmea_zda_in( struct minmea_parse_zda *vzda )
+void nmea_zda_in( struct minmea_sentence_zda *vzda )
 {
     dbgprint("I got zda\n");
 }    
@@ -53,15 +53,16 @@ void nmea_zda_in( struct minmea_parse_zda *vzda )
 
 void nmea_input( FILE *fp, char *input )
 {
-    uint8_t id = minmea_sentence_id minmea_sentence_id(input, 1);
-#define NMEA(e,f,p,t)
+    uint8_t id = minmea_sentence_id(input, 1);
+#define NMEA(e,t,p,f)\
     {\
-        t parse;\
+        struct t parse;\
         if ( e == id )\
         {\
-            if ( f(&parse,input) )\
+            if ( p(&parse,input) )\
             {\
                 fprintf(fp, "nmea valid\n\r");\
+                f(&parse);\
             }\
             else\
             {\
