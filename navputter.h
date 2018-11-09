@@ -6,7 +6,7 @@
 #include "xatoi.h"
 
 void poll_buttons(void);
-void run_event(uint8_t event_type, uint8_t event_number );
+void run_event(uint8_t event_type, uint16_t event_number );
 void reset_factory_default(void);
 void start_timer(void);
 void send_zoom_in( void );

@@ -26,7 +26,9 @@ enum events
 {
     EVENT_NONE = 0,
     EVENT_KEY_DOWN,
-    EVENT_KEY_UP
+    EVENT_KEY_UP,
+    EVENT_KEYPAD_UP,
+    EVENT_KEYPAD_DOWN
 };
 
 enum keypad_states
@@ -294,11 +296,17 @@ void reset_factory_default(void)
 }
 
 
-void run_event(uint8_t event_type, uint8_t event_number )
+void run_event(uint8_t event_type, uint16_t event_number )
 {
     static uint8_t last_zoom_dir=0;
     switch( event_type )
     {
+        case EVENT_KEYPAD_UP:
+            dbgprint("up r=%d c=%d\n", (event_number & 0xff00) >> 8, event_number & 0x0f );
+            break;
+        case EVENT_KEYPAD_DOWN:
+            dbgprint("down r=%d c=%d\n", (event_number & 0xff00) >> 8, event_number & 0x0f );
+            break;
         case EVENT_KEY_UP:
             if ( event_number & (B_Z_IN|B_Z_OUT) )
                 last_zoom_dir = 0;
@@ -356,9 +364,9 @@ void poll_buttons(void)
             if ( counts[i] == DEBOUNCE_COUNT )
             {
                 if ( input & (1<<i) )
-                    run_event( EVENT_KEY_UP, 1<<i );
+                    run_event( EVENT_KEY_UP, (uint16_t)1<<i );
                 else
-                    run_event( EVENT_KEY_DOWN, 1<<i );
+                    run_event( EVENT_KEY_DOWN, (uint16_t)1<<i );
                 counts[i]++;
                 buttons_pressed = ~input;
             }
@@ -393,16 +401,15 @@ void read_keypad(void)
     static uint8_t  next_state=0xff;
     static uint8_t  cur_row =0;
     static uint8_t  last_cols = 0xff;
-    static uint8_t  last_row =0;
     static uint32_t until=0;
     static uint8_t key_array[ MAX_KEY_COLS ]={0};
     uint8_t cur_cols;
     switch( keypad_state )
     {
         case KP_STABALIZE:
-            DDRF = 1<<last_row;
+            DDRF = 1<<cur_row;
             PORTF &= 0xf0;
-            PORTF |= 1<<last_row;
+            PORTF |= 1<<cur_row;
             next_state = KP_READ_COLS;
             keypad_state = KP_WAIT;
             until = ticks + 1;
@@ -418,18 +425,25 @@ void read_keypad(void)
             cur_cols = (PINF & 0xf0) >> 4;
             if ( cur_cols == last_cols )
             {
-                keypad_state = KP_REPORT;
-                key_array[ cur_row ] = cur_cols;
+                if ( key_array[ cur_row ] != cur_cols )
+                {
+                    uint8_t i;
+                    for ( i=0; i< global_config.config.cols; i++ )
+                    {
+                        if ( (cur_cols&(1<<i)) != (key_array[cur_row]&(1<<i)))
+                        {
+                            uint8_t event = (cur_cols & (1 << i )) ? EVENT_KEYPAD_DOWN : EVENT_KEYPAD_UP;
+                            run_event( event, (uint16_t)cur_row << 8 | (uint16_t)i );
+                        }
+                    }
+                    key_array[ cur_row ] = cur_cols;
+                }
                 cur_row++;
                 if ( cur_row >= MAX_KEY_ROWS ) 
                 {
-                    keypad_state = KP_REPORT;   
                     cur_row = 0;
                 }
-                else
-                {
-                    keypad_state = KP_STABALIZE;
-                }
+                keypad_state = KP_STABALIZE;
             }
             else
             {
@@ -438,10 +452,6 @@ void read_keypad(void)
                 last_cols = cur_cols;
                 until = ticks + 1;
             }
-            break;
-        case KP_REPORT:
-            dbgprint("keys changed\n");
-            next_state = KP_STABALIZE;
             break;
         default:
             dbgprint("puke: %d\n",keypad_state);
