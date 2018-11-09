@@ -4,7 +4,7 @@ volatile uint32_t ticks;
 long milliseconds_since;
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 
-#define CTC_MATCH_OVERFLOW ((F_CPU / 1000) / 8)
+#define CTC_MATCH_OVERFLOW (uint8_t)(( (uint32_t)F_CPU / (uint32_t)1000) / (uint32_t)8)
 
 #define KEY_SEQ_LIST\
     KEY_SEQ( ZOOM_IN, HID_KEYBOARD_SC_EQUAL_AND_PLUS       ) \
@@ -31,10 +31,10 @@ enum events
 
 enum keypad_states
 {
-    KP_START=0,
+    KP_STABALIZE,
     KP_WAIT,
-    KP_READ_ROWS,
-    KP_READ_COLS
+    KP_READ_COLS,
+    KP_REPORT
 };
 
 
@@ -385,55 +385,70 @@ void send_zoom_out( void )
 }
 
 
-
 #define DEBOUNCE_COUNT 10
 #define GHOST_DELAY 2
 void read_keypad(void)
 {
-    static uint8_t last_row=0;
-    static uint8_t last_col=0;
-    static uint8_t keypad_state = KP_START;
-    static uint8_t row;
-    static uint8_t col;
-    static uint32_t until=0;
+    static uint8_t  keypad_state = KP_STABALIZE;
     static uint8_t  next_state=0xff;
+    static uint8_t  cur_row =0;
+    static uint8_t  last_cols = 0xff;
+    static uint8_t  last_row =0;
+    static uint32_t until=0;
+    static uint8_t key_array[ MAX_KEY_COLS ]={0};
+    uint8_t cur_cols;
     switch( keypad_state )
     {
-        case KP_START:
-            DDRF=0x0f;
-            PORTF=0x0f;
+        case KP_STABALIZE:
+            DDRF = 1<<last_row;
+            PORTF &= 0xf0;
+            PORTF |= 1<<last_row;
+            next_state = KP_READ_COLS;
             keypad_state = KP_WAIT;
-            until = ticks+GHOST_DELAY;
-            next_state = KP_READ_ROWS;
-
-            if ( (row != last_row) || (col != last_col) )
-            {
-              last_row = row;
-              last_col = col;
-              dbgprint("%x-%x",row,col);
-            }
+            until = ticks + 1;
+            last_cols = 0xff;
             break;
+
         case KP_WAIT:
             if ( ticks < until ) return;
             keypad_state = next_state;
             break;
-        case KP_READ_ROWS:
-            row = PINF & 0xf0;
-            keypad_state = KP_WAIT;
-            until = ticks+2;
-            DDRF = 0xf0;
-            PORTF=0xf0;
-            next_state = KP_READ_COLS;
-            break;
+
         case KP_READ_COLS:
-            col = PINF & 0x0f;
-            keypad_state = KP_START;
+            cur_cols = (PINF & 0xf0) >> 4;
+            if ( cur_cols == last_cols )
+            {
+                keypad_state = KP_REPORT;
+                key_array[ cur_row ] = cur_cols;
+                cur_row++;
+                if ( cur_row >= MAX_KEY_ROWS ) 
+                {
+                    keypad_state = KP_REPORT;   
+                    cur_row = 0;
+                }
+                else
+                {
+                    keypad_state = KP_STABALIZE;
+                }
+            }
+            else
+            {
+                keypad_state = KP_WAIT;
+                next_state = KP_READ_COLS;
+                last_cols = cur_cols;
+                until = ticks + 1;
+            }
+            break;
+        case KP_REPORT:
+            dbgprint("keys changed\n");
+            next_state = KP_STABALIZE;
             break;
         default:
             dbgprint("puke: %d\n",keypad_state);
             break;
     }
 }
+
 
 int main(void)
 {

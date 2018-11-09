@@ -1,6 +1,6 @@
-
-#include "VirtualSerialMouse.h"
+#include <stdlib.h>
 #include <string.h>
+#include "VirtualSerialMouse.h"
 #include "uTFT_ST7735.h"
 #include "myutil.h"
 #include "xatoi.h"
