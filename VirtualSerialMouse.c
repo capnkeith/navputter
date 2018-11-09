@@ -41,6 +41,10 @@
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
  *  within a device can be differentiated from one another.
  */
+
+extern uint8_t key_out;
+extern uint8_t modifier_out;
+
 static uint8_t PrevHIDReportBuffer[MAX(sizeof(USB_KeyboardReport_Data_t), sizeof(USB_MouseReport_Data_t))];
 USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
 	{
@@ -203,37 +207,23 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 //	if (!(ButtonStatus_LCL & BUTTONS_BUTTON1))
 	if (1)
 	{
-
-	//	USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
-/*
-        if ( press == 0 )
+        USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
+        if ( key_out != 0 )
         {
-
-//		KeyboardReport->Modifier = HID_KEYBOARD_MODIFIER_LEFTSHIFT;
-
-//		if (JoyStatus_LCL & JOY_UP)
-		  KeyboardReport->KeyCode[0] = HID_KEYBOARD_SC_A;
-		else if (JoyStatus_LCL & JOY_DOWN)
-		  KeyboardReport->KeyCode[0] = HID_KEYBOARD_SC_B;
-
-		if (JoyStatus_LCL & JOY_LEFT)
-		  KeyboardReport->KeyCode[0] = HID_KEYBOARD_SC_C;
-		else if (JoyStatus_LCL & JOY_RIGHT)
-		  KeyboardReport->KeyCode[0] = HID_KEYBOARD_SC_D;
-
-		if (JoyStatus_LCL & JOY_PRESS)
-		  KeyboardReport->KeyCode[0] = HID_KEYBOARD_SC_E;
-
-		*ReportID   = HID_REPORTID_KeyboardReport;
-		*ReportSize = sizeof(USB_KeyboardReport_Data_t);
-        press = 0xfff;
+            KeyboardReport->Modifier = modifier_out;
+		    KeyboardReport->KeyCode[0] = key_out;
+            dbgprint("key out %x\n", key_out );
+            key_out = 0;
+            modifier_out = 0;
+		    *ReportID   = HID_REPORTID_KeyboardReport;
+		    *ReportSize = sizeof(USB_KeyboardReport_Data_t);
         }
-        else
+		else 
         {
-            press--;
             KeyboardReport->Modifier=0;
+		    *ReportID   = HID_REPORTID_KeyboardReport;
+		    *ReportSize = sizeof(USB_KeyboardReport_Data_t);
         }
-*/
 		return false;
 	}
 	else

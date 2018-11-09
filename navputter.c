@@ -21,7 +21,8 @@ enum sequence_ids
 uint16_t key_sequences[ MAX_KEY_SEQUENCES ]={1,0};
 
 uint8_t buttons_pressed=0;
-
+uint8_t key_out =0;
+uint8_t modifier_out =0; 
 enum events
 {
     EVENT_NONE = 0,
@@ -133,7 +134,7 @@ typedef struct eeprom_header
 typedef struct eeprom_layout
 {
     eeprom_header_t config;
-    uint8_t         key_map[ MAX_KEY_ROWS * MAX_KEY_COLS ];  
+    uint8_t         key_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
     uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];
 }eeprom_layout_t;
 
@@ -159,8 +160,10 @@ typedef struct eeprom_layout
 
 eeprom_layout_t global_config={
     {1,4,4,0},
-    {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15},
+    {{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}},
     {
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },
+		{ HID_KEYBOARD_SC_A << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT },
         { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },                /* up arrow is seq 0 */
         { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },              /* down arrow is seq 1 */
         { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },
@@ -201,7 +204,7 @@ void cmd_dump( FILE *fp, char *str )
     {
         for ( c=0; c< global_config.config.cols; c++ )
         {
-            fprintf(fp,"%2d ", global_config.key_map[ r * global_config.config.rows + c ] );
+            fprintf(fp,"%2d ", global_config.key_map[ r ][ c ] );
         }
         fprintf(fp, "\n\r" );
     }
@@ -221,16 +224,17 @@ void cmd_dump( FILE *fp, char *str )
 
 void cmd_map( FILE *fp, char *str )
 {
-    uint8_t key = atoi(str);
+    uint8_t row = atoi(str);
     char *c = strchr( str, ' ' );
-    if ( !c )
-    {
-        fprintf(fp, "illegal format. Nothing chagned. Ex: map 1 2\n\r");
-        return;
-    } 
+    if ( !c ) goto ERROR;
+    uint8_t col = atoi(c+1);
+    if ( !c ) goto ERROR;
     uint8_t seq = atoi(c+1);
-    global_config.key_map[key]=seq;
-    fprintf(fp, "successfully set key %d to seq %d\n\r", key, seq );
+    global_config.key_map[row][col]=seq;
+    fprintf(fp, "successfully set key %d %d to seq %\n\r", row, col, seq );
+    return;
+ERROR:
+    fprintf(fp, "illegal format. Nothing chagned. Ex: map 1 2 2\n\r");
     return;
 }
 
@@ -302,11 +306,24 @@ void run_event(uint8_t event_type, uint16_t event_number )
     switch( event_type )
     {
         case EVENT_KEYPAD_UP:
-            dbgprint("up r=%d c=%d\n", (event_number & 0xff00) >> 8, event_number & 0x0f );
             break;
         case EVENT_KEYPAD_DOWN:
-            dbgprint("down r=%d c=%d\n", (event_number & 0xff00) >> 8, event_number & 0x0f );
+        {
+            uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
+            uint8_t col = (uint8_t)(0x00ff & event_number);
+            uint8_t seq = global_config.key_map[row][col];
+            if ( global_config.key_seq[ seq ][ 0 ] )
+            {
+                key_out = (global_config.key_seq[ seq ][0] & 0xff00 ) >> 8;
+                modifier_out = (global_config.key_seq[seq][0] & 0x00ff );
+                dbgprint("seq %d, key %x mod %x\n", seq, key_out, modifier_out );
+            }
+            else
+            {
+                dbgprint("seq %d no key\n", seq );
+            }
             break;
+        }
         case EVENT_KEY_UP:
             if ( event_number & (B_Z_IN|B_Z_OUT) )
                 last_zoom_dir = 0;
@@ -459,6 +476,20 @@ void read_keypad(void)
     }
 }
 
+void init_eeprom(void)
+{
+    eeprom_header_t hdr;
+    eeprom_read_block((void *)&hdr,NULL,sizeof(hdr));
+    if ( hdr.version == 0xff )
+    {
+        reset_factory_default();   
+    }
+    else
+    {
+        eeprom_read_block((void *)&global_config,NULL,sizeof(global_config));
+        dbgprint("read eeprom ver=%d\n", global_config.config.version );
+    }
+}
 
 int main(void)
 {
@@ -468,6 +499,7 @@ int main(void)
 	LEDs_SetAllLEDs(LEDMASK_USB_NOTREADY);
 	GlobalInterruptEnable();
     initDisplay();
+    init_eeprom();
 	fillScreen(Color565(0,0,0));
 	setTextColor(Color565(255,255,255),Color565(00,00,00));
     dbgprint("hello world"); 
