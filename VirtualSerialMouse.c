@@ -35,7 +35,7 @@
  */
 
 #include "VirtualSerialMouse.h"
-#include "myutil.h"
+#include "navputter.h"
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -44,6 +44,8 @@
 
 extern uint8_t key_out;
 extern uint8_t modifier_out;
+extern uint8_t global_mouse_mode;
+extern uint8_t global_mouse_dir;
 
 static uint8_t PrevHIDReportBuffer[MAX(sizeof(USB_KeyboardReport_Data_t), sizeof(USB_MouseReport_Data_t))];
 USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
@@ -205,7 +207,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 
     
 //	if (!(ButtonStatus_LCL & BUTTONS_BUTTON1))
-	if (1)
+	if (global_mouse_mode != MOUSE_MODE)
 	{
         USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
         if ( key_out != 0 )
@@ -230,21 +232,20 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	{
 		USB_MouseReport_Data_t* MouseReport = (USB_MouseReport_Data_t*)ReportData;
 
-//		if (JoyStatus_LCL & JOY_UP)
-
+        if ( global_mouse_dir & MOUSE_DIR_UP )
 		  MouseReport->Y = -1;
-/*
-		else if (JoyStatus_LCL & JOY_DOWN)
-		  MouseReport->Y =  1;
-
-		if (JoyStatus_LCL & JOY_LEFT)
+        if ( global_mouse_dir & MOUSE_DIR_DOWN )
+		  MouseReport->Y = 1;
+        if ( global_mouse_dir & MOUSE_DIR_LEFT )
 		  MouseReport->X = -1;
-		else if (JoyStatus_LCL & JOY_RIGHT)
-		  MouseReport->X =  1;
+        if ( global_mouse_dir & MOUSE_DIR_RIGHT )
+		  MouseReport->X = 1;
 
-		if (JoyStatus_LCL & JOY_PRESS)
+        if ( global_mouse_dir & MOUSE_LT_CLICK )
 		  MouseReport->Button |= (1 << 0);
-*/
+
+        if ( global_mouse_dir & MOUSE_RT_CLICK )
+		  MouseReport->Button |= (1 << 1);
 
 		*ReportID   = HID_REPORTID_MouseReport;
 		*ReportSize = sizeof(USB_MouseReport_Data_t);

@@ -23,24 +23,10 @@ uint16_t key_sequences[ MAX_KEY_SEQUENCES ]={1,0};
 uint8_t buttons_pressed=0;
 uint8_t key_out =0;
 uint8_t modifier_out =0; 
-enum events
-{
-    EVENT_NONE = 0,
-    EVENT_KEY_DOWN,
-    EVENT_KEY_UP,
-    EVENT_KEYPAD_UP,
-    EVENT_KEYPAD_DOWN
-};
 
-enum keypad_states
-{
-    KP_STABALIZE,
-    KP_WAIT,
-    KP_READ_COLS,
-    KP_REPORT
-};
+uint8_t global_mouse_dir=0;
 
-
+uint8_t global_mouse_mode = KEY_SLOW_MODE;
 
 enum states
 {
@@ -51,17 +37,6 @@ enum leds
 {
     LED_1     = 0x00000001,
     LED_2     = 0x00000002
-};
-
-enum buttons 
-{
-    B_TOGGLE  = 0x00000001,
-    B_LEFT    = 0x00000002,
-    B_RIGHT   = 0x00000004,
-    B_DOWN    = 0x00000008,
-    B_UP      = 0x00000010,
-    B_Z_IN    = 0x00000020,
-    B_Z_OUT   = 0x00000040
 };
 
 typedef struct keypress
@@ -135,6 +110,8 @@ typedef struct eeprom_layout
 {
     eeprom_header_t config;
     uint8_t         key_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
+    uint8_t         key_map2[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
+    uint8_t         mouse_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
     uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];
 }eeprom_layout_t;
 
@@ -158,19 +135,48 @@ typedef struct eeprom_layout
 
 */
 
+
+
 eeprom_layout_t global_config={
     {1,4,4,0},
-    {{0,1,2,3},{4,5,6,7},{8,9,10,11},{12,13,14,15}},
+    {                       /* key map 1 ( slow map ) */
+        {0,1,2,3},
+        {4,5,6,7},
+        {8,9,10,11},
+        {12,13,14,15}
+    },                      /* key map 2 ( fast map ) */
     {
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },
-		{ HID_KEYBOARD_SC_A << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT },
-        { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },                /* up arrow is seq 0 */
-        { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },              /* down arrow is seq 1 */
-        { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },
-        { HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8, 0,0,0 },
-        { HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },
+        {0,1,2,3},
+        {4,5,6,7},
+        {8,9,10,11},
+        {12,13,14,15}
+    },      
+    {                       /* mouse map */
+        { 0, MOUSE_DIR_UP, 0, 0 }, 
+        { MOUSE_DIR_LEFT, 0, MOUSE_DIR_RIGHT, 0 }, 
+        { 0, MOUSE_DIR_DOWN, 0, 0 },
+        { MOUSE_LT_CLICK, MOUSE_RT_CLICK, 0, 0 }
+    },             
+    {                       /* key sequences */
+        { INT_CMD, IC_TOGGLE_MOUSE_KEYBOARD, 0, 0 },            /* key 0 is key slow / key fast / mouse toggle */
+        { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },               /* key 1 is up arrow */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+
+        { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },             /* key 4 is right arrow */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },            /* key 6 is left arrow */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+        { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },             /* key 9 is down arrow */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+
+		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
     }
 };
 
@@ -231,7 +237,7 @@ void cmd_map( FILE *fp, char *str )
     if ( !c ) goto ERROR;
     uint8_t seq = atoi(c+1);
     global_config.key_map[row][col]=seq;
-    fprintf(fp, "successfully set key %d %d to seq %\n\r", row, col, seq );
+    fprintf(fp, "successfully set key %d %d to seq %d\n\r", row, col, seq );
     return;
 ERROR:
     fprintf(fp, "illegal format. Nothing chagned. Ex: map 1 2 2\n\r");
@@ -248,7 +254,6 @@ void cmd_seq( FILE *fp, char *str )
     if ( !c ) goto ERROR;
 
     
-    uint16_t *key_ptr = ((eeprom_layout_t *)NULL)->key_seq[key_id];
     uint8_t i;
     uint16_t key;
     uint16_t mod;
@@ -298,6 +303,20 @@ void reset_factory_default(void)
     dbgprint("reset to factory default\n");
     eeprom_write_block( (void *)&global_config, NULL, sizeof( global_config ) );
 }
+void run_internal_cmd( uint16_t cmd )
+{
+    switch(cmd)
+    {
+        case IC_TOGGLE_MOUSE_KEYBOARD:
+            global_mouse_mode = ( global_mouse_mode < MOUSE_MODE ) ? global_mouse_mode+1 : KEY_SLOW_MODE;
+            global_mouse_dir = 0;
+            dbgprint( "mouse mode %d\n", global_mouse_mode );
+            break;
+        default:
+            dbgprint("unkown cmd %d\n", cmd );
+            break;
+    }
+}
 
 
 void run_event(uint8_t event_type, uint16_t event_number )
@@ -306,7 +325,18 @@ void run_event(uint8_t event_type, uint16_t event_number )
     switch( event_type )
     {
         case EVENT_KEYPAD_UP:
-            break;
+        {
+            uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
+            uint8_t col = (uint8_t)(0x00ff & event_number);
+            uint8_t seq = global_config.key_map[row][col];
+
+            if ( global_config.key_seq[ seq ][0] == INT_CMD )
+            {
+                run_internal_cmd( global_config.key_seq[seq][1] );
+            }
+            global_mouse_dir &= ~global_config.mouse_map[row][col];
+        }
+        break;
         case EVENT_KEYPAD_DOWN:
         {
             uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
@@ -322,12 +352,13 @@ void run_event(uint8_t event_type, uint16_t event_number )
             {
                 dbgprint("seq %d no key\n", seq );
             }
-            break;
+            global_mouse_dir |= global_config.mouse_map[row][col];
         }
+        break;
         case EVENT_KEY_UP:
             if ( event_number & (B_Z_IN|B_Z_OUT) )
                 last_zoom_dir = 0;
-            break;
+        break;
         case EVENT_KEY_DOWN:
             if ( event_number & (B_Z_IN|B_Z_OUT) )
             {
@@ -344,7 +375,7 @@ void run_event(uint8_t event_type, uint16_t event_number )
             else if ( event_number == B_TOGGLE ) 
             {
             }
-            break;
+        break;
      }
 }
 
