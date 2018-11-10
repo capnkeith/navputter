@@ -29,7 +29,6 @@
 */
 
 /** \file
- *
  *  Main source file for the VirtualSerialMouse demo. This file contains the main tasks of
  *  the demo and is responsible for the initial application hardware configuration.
  */
@@ -46,6 +45,7 @@ extern uint8_t key_out;
 extern uint8_t modifier_out;
 extern uint8_t global_mouse_mode;
 extern uint8_t global_mouse_dir;
+
 
 static uint8_t PrevHIDReportBuffer[MAX(sizeof(USB_KeyboardReport_Data_t), sizeof(USB_MouseReport_Data_t))];
 USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
@@ -129,33 +129,6 @@ void SetupHardware(void)
 	USB_Init();
 }
 
-/** Checks for changes in the position of the board joystick, sending strings to the host upon each change. */
-void CheckJoystickMovement(void)
-{
-	uint8_t     JoyStatus_LCL = Joystick_GetStatus();
-	char*       ReportString  = NULL;
-	static bool ActionSent    = false;
-
-	if (JoyStatus_LCL & JOY_UP)
-	  ReportString = "Joystick Up\r\n";
-	else if (JoyStatus_LCL & JOY_DOWN)
-	  ReportString = "Joystick Down\r\n";
-	else if (JoyStatus_LCL & JOY_LEFT)
-	  ReportString = "Joystick Left\r\n";
-	else if (JoyStatus_LCL & JOY_RIGHT)
-	  ReportString = "Joystick Right\r\n";
-	else if (JoyStatus_LCL & JOY_PRESS)
-	  ReportString = "Joystick Pressed\r\n";
-	else
-	  ActionSent = false;
-
-	if ((ReportString != NULL) && (ActionSent == false))
-	{
-		ActionSent = true;
-
-		CDC_Device_SendString(&VirtualSerial_CDC_Interface, ReportString);
-	}
-}
 
 /** Event handler for the library USB Connection event. */
 void EVENT_USB_Device_Connect(void)
@@ -202,32 +175,28 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
                                          void* ReportData,
                                          uint16_t* const ReportSize)
 {
-//	uint8_t JoyStatus_LCL    = Joystick_GetStatus();
-//	uint8_t ButtonStatus_LCL = Buttons_GetStatus();
-
-    
-//	if (!(ButtonStatus_LCL & BUTTONS_BUTTON1))
 	if (global_mouse_mode != MOUSE_MODE)
 	{
-        USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
-        if ( key_out != 0 )
+        static uint8_t key_state = SEND_KEY;
+        if ( key_state == SEND_KEY )
         {
-            KeyboardReport->Modifier = modifier_out;
-		    KeyboardReport->KeyCode[0] = key_out;
-            dbgprint("key out %x\n", key_out );
-            key_out = 0;
-            modifier_out = 0;
-		    *ReportID   = HID_REPORTID_KeyboardReport;
-		    *ReportSize = sizeof(USB_KeyboardReport_Data_t);
+            key = pop_key();
+            if ( key )
+            {
+                KeyboardReport->Modifier = key & 0x0000ffff;
+		        KeyboardReport->KeyCode[0] = key & 0xffff0000 >> 16;
+            }
+            key_state = CLEAR_KEY;
         }
-		else 
+        else if ( key_state == CLEAR_KEY )
         {
-            KeyboardReport->Modifier=0;
-		    *ReportID   = HID_REPORTID_KeyboardReport;
-		    *ReportSize = sizeof(USB_KeyboardReport_Data_t);
+            KeybvoardReport->Modifier = 0; 
+		    KeyboardReport->KeyCode[0] = 0;
         }
-		return false;
-	}
+		*ReportID   = HID_REPORTID_KeyboardReport;
+		*ReportSize = sizeof(USB_KeyboardReport_Data_t);
+        return false;
+    }
 	else
 	{
 		USB_MouseReport_Data_t* MouseReport = (USB_MouseReport_Data_t*)ReportData;
@@ -309,7 +278,7 @@ void EVENT_CDC_Device_ControLineStateChanged(USB_ClassInfo_CDC_Device_t *const C
 
 void lufa_main_loop(void)
 {
-		CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
-		HID_Device_USBTask(&Device_HID_Interface);
-		USB_USBTask();
+	CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
+    HID_Device_USBTask(&Device_HID_Interface);
+    USB_USBTask();
 }

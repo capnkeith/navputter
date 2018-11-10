@@ -1,63 +1,85 @@
+/* 
+******************************************************************************
+* Navputer - like a putter for golf except for your sailboat.
+******************************************************************************
+* This is an original work by Seth Keth offered for free with no licese 
+* whatsoever or if you prefer you can stick a WTFPL v2 on it. 
+*/
+
 #include "navputter.h"
 
-volatile uint32_t ticks;
-long milliseconds_since;
+/* this is the serial interface. */
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 
-#define CTC_MATCH_OVERFLOW (uint8_t)(( (uint32_t)F_CPU / (uint32_t)1000) / (uint32_t)8)
 
-#define KEY_SEQ_LIST\
-    KEY_SEQ( ZOOM_IN, HID_KEYBOARD_SC_EQUAL_AND_PLUS       ) \
-    KEY_SEQ( ZOOM_OUT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)\
+uint32_t out_key_buffer[ MAX_KEY_BUFFER_SZ ]    /* key presses going out the USB */
+uint8_t out_key_head = 0;                       /* head index for the keypress buffer */
+uint8_t out_key_tail = 0;                       /* tail index for the keypress buffer */
+volatile uint32_t global_ticks;                 /* milliseconds since boot */
+uint8_t global_mouse_dir=0;                     /* bitmask of all current mouse directions and clicks */
+uint8_t global_mouse_mode = KEY_SLOW_MODE;      /* current mode ( slow key, fast key, mouse ) */
 
-#define KEY_SEQ( e, s ) e,
-enum sequence_ids
-{
-    KEY_SEQ_LIST
-};
-#undef KEY_SEQ
 
-#define MAX_KEY_SEQUENCES 32        /* design for future flexibility */
-uint16_t key_sequences[ MAX_KEY_SEQUENCES ]={1,0};
+/* 
+ * this is our timer interrupt service routine. This is a real interrupt service routine, so
+ * don't try and do much in here. global_ticks is milliseconds since power on
+ */
 
-uint8_t buttons_pressed=0;
-uint8_t key_out =0;
-uint8_t modifier_out =0; 
-
-uint8_t global_mouse_dir=0;
-
-uint8_t global_mouse_mode = KEY_SLOW_MODE;
-
-enum states
-{
-    STATE_MOUSE = 0x01,   /* buttons control mouse */
-};
-
-enum leds
-{
-    LED_1     = 0x00000001,
-    LED_2     = 0x00000002
-};
-
-typedef struct keypress
-{
-    uint8_t key;
-    uint8_t modifier;
-}keypress_t;
-
-#define BUFFER_FULL 0xff
-#define KEY_BUF_SIZE 10
-keypress_t buf[ KEY_BUF_SIZE+1 ];
-uint8_t key_head;
-uint8_t key_tail;
-
-int once=0;
- 
 ISR (TIMER1_COMPA_vect)
 {
-    ticks++;
+    global_ticks++;
 }
 
+
+/*
+ * simple circular buffer for holding keypresses until they can be transmitted
+ * out the usb. Push the key and modifier. Key goes in high order 2 bytes,
+ * modifiers get the low order. 
+ */
+void push_key( uint8_t key, uint16_t mod )
+{
+    if ( out_key_head == MAX_KEY_BUFFER_SZ )
+    {
+        if ( out_key_tail == 0 )
+        {
+            printf("key buffer full");
+            return;  
+        }
+        else
+        {
+            out_key_buffer[out_key_head] = (uint32_t)key << 16 | mod;
+            out_key_head = 0;
+        }
+    }
+    else
+    {
+        if ( out_key_head + 1 == out_key_tail )
+        {
+            printf("key buffer full\n");
+            return;
+        }
+        else
+        {
+            out_key_buffer[out_key_head] = (uint32_t)key << 16 | mod;
+            out_key_head = ( out_key_head == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_head+1;
+        }
+    }
+}
+
+/*
+ * pop function for the vserial driver to retrieve the next keypress. Returns 0 if no more
+ * keys queued ortherwise key code in high order 2 bytes, modifier in low two bytes
+ */
+uint32_t pop_key(void)
+{
+    if ( out_key_tail == out_key_head ) return 0;
+    uint32_t key = out_key_buffer[ out_key_tail ];
+    out_key_tail = ( out_key_tail == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_tail+1;
+    return key; 
+}
+
+
+/* TODO hook up nmea parsing here */
 void nmea_input( FILE *fp, char *input )
 {
     dbgprint("nmea: %s\n\r", input );
@@ -72,21 +94,6 @@ void nmea_input( FILE *fp, char *input )
     USAGE( "----------------------------------------" )\
     USAGE( "Command list:")\
 
-
-#define CMD_LIST \
-    CMD( CMD_DUMP, dump, cmd_dump, "Dump current configuration. Ex: dump" ) \
-    CMD( CMD_SEQ,  seq,  cmd_seq,  "Set a key sequence. Ex: seq 5 0x55 0x10, 0x55 0x00" ) \
-    CMD( CMD_MAP,  map,  cmd_map,  "Map a key to a sequence. Ex: map 1 5" ) \
-    CMD( CMD_SAVE, save, cmd_save, "Save current configuration to eeprom. Ex: save" ) \
-    CMD( CMD_HELP, help, cmd_help, "Show this help. Ex: help" ) \
-
-
-#define CMD(e, x, f, h) e,
-enum {
-    CMD_LIST
-    CMD_LAST
-};
-#undef CMD
 
 #define CMD( e,x,f,h ) #x,
 
@@ -120,25 +127,13 @@ typedef struct eeprom_layout
 #define EEPROM_KEY_SEQ ((eeprom_layout_t *)NULL)->key_seq
 
 /*
-    0  1  2  3 
-    4  5  6  7
-    8  9  10 11
-    12 13 14 15
-
-
-    1   up arrow            seq 0 
-    9   down arrow          seq 1 
-    4   left arrow          seq 2 
-    6   right arrow         seq 3 
-    14  zoom in             seq 4
-    15  zoom out            seq 5 
-
-*/
-
-
+ * This is the factory defaul settting for key mappings. If you flash eeprom will get
+ * written to this value, or you can set the version ( eeprom location 0 ) to 0xff and
+ * eeprom will get factory rest on the next power up 
+ */
 
 eeprom_layout_t global_config={
-    {1,4,4,0},
+    {1,4,4,0},              /* version 1, 4 rows, 4 cols  */
     {                       /* key map 1 ( slow map ) */
         {0,1,2,3},
         {4,5,6,7},
@@ -146,9 +141,9 @@ eeprom_layout_t global_config={
         {12,13,14,15}
     },                      /* key map 2 ( fast map ) */
     {
-        {0,1,2,3},
-        {4,5,6,7},
-        {8,9,10,11},
+        {0,16,2,3},
+        {17,5,18,7},
+        {8,19,10,11},
         {12,13,14,15}
     },      
     {                       /* mouse map */
@@ -159,28 +154,31 @@ eeprom_layout_t global_config={
     },             
     {                       /* key sequences */
         { INT_CMD, IC_TOGGLE_MOUSE_KEYBOARD, 0, 0 },            /* key 0 is key slow / key fast / mouse toggle */
-        { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },               /* key 1 is up arrow */
+        { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },               /* up arrow key */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 
-        { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },             /* key 4 is right arrow */
+        { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },             /* right arrow key */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },            /* key 6 is left arrow */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-        { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },             /* key 9 is down arrow */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },            /* left arrow key */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 
-		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8, 0, 0, 0 },                    /* 'a' */
-		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+        { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },             /* down arrow key */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+
+		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8, 0, 0, 0 },/* 'a' */
+		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0, 0, 0 }, /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+
+        { HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },       /* speed key up arrow seq */
+        { HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },     /* speed key left seq */
+        { HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },    /* speed key right seq */
+        { HID_KEYBOARD_SC_DOWN_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },     /* speed key down seq */
     }
 };
-
-#define EEPROM_KEYMAP_BASE ((char *)NULL + sizeof( eeprom_header_t ))
 
 
 void cmd_help( FILE *fp, char *str )
@@ -194,10 +192,6 @@ CMD_LIST
 #undef CMD
 fprintf( fp, "Enter Command:\n\r");
 }
-
-
-
-//    eeprom_read_block( (void *)&eeprom_header, NULL, sizeof( eeprom_header_t ) );
 
 
 void cmd_dump( FILE *fp, char *str )
@@ -380,6 +374,9 @@ void run_event(uint8_t event_type, uint16_t event_number )
 }
 
 
+/*
+ * millisecond timer. We just increment the 'ticks' global 
+ */
 void start_timer(void)
 { 
     // CTC mode, Clock/8
@@ -416,7 +413,6 @@ void poll_buttons(void)
                 else
                     run_event( EVENT_KEY_DOWN, (uint16_t)1<<i );
                 counts[i]++;
-                buttons_pressed = ~input;
             }
             else if ( counts[i] < DEBOUNCE_COUNT ) counts[i]++;
         }
@@ -460,12 +456,12 @@ void read_keypad(void)
             PORTF |= 1<<cur_row;
             next_state = KP_READ_COLS;
             keypad_state = KP_WAIT;
-            until = ticks + 1;
+            until = global_ticks + 1;
             last_cols = 0xff;
             break;
 
         case KP_WAIT:
-            if ( ticks < until ) return;
+            if ( global_ticks < until ) return;
             keypad_state = next_state;
             break;
 
@@ -498,7 +494,7 @@ void read_keypad(void)
                 keypad_state = KP_WAIT;
                 next_state = KP_READ_COLS;
                 last_cols = cur_cols;
-                until = ticks + 1;
+                until = global_ticks + 1;
             }
             break;
         default:
