@@ -14,7 +14,7 @@ void reset_factory_default(void);
 void start_timer(void);
 void send_zoom_in( void );
 void send_zoom_out( void );
-
+uint16_t pop_key(void);
 
 enum leds               /* enums for leds */
 {

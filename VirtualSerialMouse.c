@@ -169,6 +169,17 @@ void EVENT_USB_Device_ControlRequest(void)
  *
  *  \return Boolean \c true to force the sending of the report, \c false to let the library determine if it needs to be sent
  */
+
+
+enum report_states
+{
+    SEND_KEY = 0,
+    CLEAR_KEY
+};
+
+uint8_t key_state = SEND_KEY;
+
+
 bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDInterfaceInfo,
                                          uint8_t* const ReportID,
                                          const uint8_t ReportType,
@@ -177,21 +188,22 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 {
 	if (global_mouse_mode != MOUSE_MODE)
 	{
-        static uint8_t key_state = SEND_KEY;
+        USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
         if ( key_state == SEND_KEY )
         {
-            key = pop_key();
+            uint16_t key = pop_key();
             if ( key )
             {
-                KeyboardReport->Modifier = key & 0x0000ffff;
-		        KeyboardReport->KeyCode[0] = key & 0xffff0000 >> 16;
+                KeyboardReport->Modifier = key & 0x00ff;
+		        KeyboardReport->KeyCode[0] = (key & 0xff00) >> 8;
             }
             key_state = CLEAR_KEY;
         }
         else if ( key_state == CLEAR_KEY )
         {
-            KeybvoardReport->Modifier = 0; 
-		    KeyboardReport->KeyCode[0] = 0;
+            KeyboardReport->Modifier = 0; 
+//		    KeyboardReport->KeyCode[0] = 0;
+            key_state = SEND_KEY;
         }
 		*ReportID   = HID_REPORTID_KeyboardReport;
 		*ReportSize = sizeof(USB_KeyboardReport_Data_t);

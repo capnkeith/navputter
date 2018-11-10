@@ -1,3 +1,4 @@
+
 /* 
 ******************************************************************************
 * Navputer - like a putter for golf except for your sailboat.
@@ -12,10 +13,10 @@
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 
 
-uint32_t out_key_buffer[ MAX_KEY_BUFFER_SZ ]    /* key presses going out the USB */
+uint16_t out_key_buffer[ MAX_KEY_BUFFER_SZ ];   /* key presses going out the USB */
 uint8_t out_key_head = 0;                       /* head index for the keypress buffer */
 uint8_t out_key_tail = 0;                       /* tail index for the keypress buffer */
-volatile uint32_t global_ticks;                 /* milliseconds since boot */
+volatile uint32_t global_ticks=0;               /* milliseconds since boot */
 uint8_t global_mouse_dir=0;                     /* bitmask of all current mouse directions and clicks */
 uint8_t global_mouse_mode = KEY_SLOW_MODE;      /* current mode ( slow key, fast key, mouse ) */
 
@@ -33,10 +34,9 @@ ISR (TIMER1_COMPA_vect)
 
 /*
  * simple circular buffer for holding keypresses until they can be transmitted
- * out the usb. Push the key and modifier. Key goes in high order 2 bytes,
- * modifiers get the low order. 
+ * out the usb. Push the key and modifier. Key goes in high byte, mods low order.
  */
-void push_key( uint8_t key, uint16_t mod )
+void push_key( uint8_t key, uint8_t mod )
 {
     if ( out_key_head == MAX_KEY_BUFFER_SZ )
     {
@@ -47,7 +47,7 @@ void push_key( uint8_t key, uint16_t mod )
         }
         else
         {
-            out_key_buffer[out_key_head] = (uint32_t)key << 16 | mod;
+            out_key_buffer[out_key_head] = (uint16_t)key << 8 | mod;
             out_key_head = 0;
         }
     }
@@ -60,7 +60,7 @@ void push_key( uint8_t key, uint16_t mod )
         }
         else
         {
-            out_key_buffer[out_key_head] = (uint32_t)key << 16 | mod;
+            out_key_buffer[out_key_head] = (uint16_t)key << 8 | mod;
             out_key_head = ( out_key_head == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_head+1;
         }
     }
@@ -70,10 +70,13 @@ void push_key( uint8_t key, uint16_t mod )
  * pop function for the vserial driver to retrieve the next keypress. Returns 0 if no more
  * keys queued ortherwise key code in high order 2 bytes, modifier in low two bytes
  */
-uint32_t pop_key(void)
+uint16_t pop_key(void)
 {
-    if ( out_key_tail == out_key_head ) return 0;
-    uint32_t key = out_key_buffer[ out_key_tail ];
+    if ( out_key_tail == out_key_head ) 
+    {
+        return 0;
+    }
+    uint16_t key = out_key_buffer[ out_key_tail ];
     out_key_tail = ( out_key_tail == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_tail+1;
     return key; 
 }
@@ -173,10 +176,10 @@ eeprom_layout_t global_config={
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 
-        { HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },       /* speed key up arrow seq */
-        { HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },     /* speed key left seq */
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },    /* speed key right seq */
-        { HID_KEYBOARD_SC_DOWN_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFT_SHIFT, 0,0,0 },     /* speed key down seq */
+        { HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },       /* speed key up arrow seq */
+        { HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },     /* speed key left seq */
+        { HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },    /* speed key right seq */
+        { HID_KEYBOARD_SC_DOWN_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },     /* speed key down seq */
     }
 };
 
@@ -338,9 +341,11 @@ void run_event(uint8_t event_type, uint16_t event_number )
             uint8_t seq = global_config.key_map[row][col];
             if ( global_config.key_seq[ seq ][ 0 ] )
             {
-                key_out = (global_config.key_seq[ seq ][0] & 0xff00 ) >> 8;
-                modifier_out = (global_config.key_seq[seq][0] & 0x00ff );
-                dbgprint("seq %d, key %x mod %x\n", seq, key_out, modifier_out );
+                uint8_t key_out = (global_config.key_seq[ seq ][0] & 0xff00 ) >> 8;
+                uint8_t mod_out = (global_config.key_seq[ seq ][0] & 0x00ff );
+                mod_out = (global_config.key_seq[seq][0] & 0x00ff );
+                dbgprint("seq %d, key %x mod %x\n", seq, key_out, mod_out );
+                push_key( key_out, mod_out );
             }
             else
             {
@@ -384,7 +389,7 @@ void start_timer(void)
  
     // Load the high byte, then the low byte
     // into the output compare
-    OCR1AH = (CTC_MATCH_OVERFLOW >> 8);
+    OCR1AH = (CTC_MATCH_OVERFLOW >> 4); /* 8 */
     OCR1AL = CTC_MATCH_OVERFLOW;
  
     // Enable the compare match interrupt
@@ -394,6 +399,9 @@ void start_timer(void)
     DDRC |= (1 << PC0);
 
 }
+
+/* TODO - rewrite this with the global_ticks
+*/
 
 #define DEBOUNCE_COUNT 10
 void poll_buttons(void)
@@ -437,8 +445,12 @@ void send_zoom_out( void )
 }
 
 
-#define DEBOUNCE_COUNT 10
-#define GHOST_DELAY 2
+/*
+ * keypads have rows and cols multiplexed, so to get multipile keys at once we 
+ * cycle through rows one millisecond at a time, letting the signal settle for
+ * one millisecond. The we trigger up/down events for each changed row/col
+ */
+ 
 void read_keypad(void)
 {
     static uint8_t  keypad_state = KP_STABALIZE;
@@ -537,13 +549,31 @@ int main(void)
 #define MAX_LINE_SIZE 256 
     static char serial_input[MAX_LINE_SIZE+1];
     static uint16_t ix=0;
+        
+
+    fprintf(fp, "Navputter starting Cap'n\n\r");
+    uint32_t start = global_ticks;
 	for (;;)
 	{
         lufa_main_loop();
         read_keypad();
         char c=0;
-		c = fgetc(fp);
+  /* Must throw away unused bytes from the host, or it will lock up while waiting for the device */
 
+
+#define STARTUP_DELAY 10000 /* if someone can make a char by char nmea parser we can avoid this */
+        if ( global_ticks < STARTUP_DELAY ) 
+        {
+            CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
+            continue; /* wait for the at commands to end */
+        }
+		c = fgetc(fp);
+        static uint8_t once=0;
+        if ( !once ) 
+        {
+            once=1;
+            fprintf(fp, "Navputter ready Cap'n\n\r");
+        }
         if ( c && (c != 0xff) ) 
         {
             serial_input[ix]=c;
