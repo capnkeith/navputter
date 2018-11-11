@@ -18,11 +18,6 @@ void send_zoom_in( void );
 void send_zoom_out( void );
 uint16_t pop_key(void);
 
-enum leds               /* enums for leds */
-{
-    LED_1     = 0x00000001,
-    LED_2     = 0x00000002
-};
 
 enum events             /* main event type for do_event() */
 {
@@ -48,16 +43,41 @@ enum mouse_key_modes    /* global modes for slow keyboard / fast keyboard / mous
     MOUSE_MODE
 };
 
-enum buttons            /* support for misc buttons */
+
+/*
+ * these are non keypad buttons. These are processed in poll_buttons. 
+ */
+
+#define BUTTON_LIST\
+    BUTTON( B_Z_IN,     DDRD, 0, PIND )    /* radial encoder zoom in rot */     \
+    BUTTON( B_Z_OUT,    DDRD, 1, PIND )    /* radial encoder zoom out dir */    \
+    BUTTON( B_TOGGLE,   DDRD, 2, PIND )    /* toggle button */                  \
+    BUTTON( B_MISC,     DDRD, 3, PIND )    /* some other button */              
+
+#define BUTTON( e, ddr, num, pin ) e,
+enum button_numbers
 {
-    B_TOGGLE  = 0x00000001,
-    B_LEFT    = 0x00000002,
-    B_RIGHT   = 0x00000004,
-    B_DOWN    = 0x00000008,
-    B_UP      = 0x00000010,
-    B_Z_IN    = 0x00000020,
-    B_Z_OUT   = 0x00000040
+    BUTTON_LIST
+    TOTAL_BUTTONS
 };
+#undef BUTTON
+
+
+/*
+ * these are leds. I am lighting leds for the current state <slow key>=none, <fast key>=left, <mouse>=both
+ */
+#define LED_LIST\
+    LED( LED_1,         DDRD, 4, PORTD )    /* led 1 */                         \
+    LED( LED_2,         DDRD, 5, PORTD )    /* led 2 */                         \
+
+
+#define LED( e, ddr, num, pin ) e,
+enum led_numbers
+{
+    LED_LIST 
+};
+#undef BUTTON
+
 
 #define INT_CMD 0xffff  /* not a key press but internal command from 2nd key seq */
 enum internal_commands  /* this is the list of internal commands */

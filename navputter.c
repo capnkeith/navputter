@@ -3,9 +3,21 @@
 ******************************************************************************
 * Navputer - like a putter for golf except for your sailboat.
 ******************************************************************************
+*
 * This is an original work by Seth Keth offered for free with no licese 
 * whatsoever or if you prefer you can stick a WTFPL v2 on it. 
+*
+******************************************************************************
+* 
+* port mappings:
+*
+* The display needs 4 pins PORTC 0-3 configured in uTFT_ST7735.h.
+* The individual buttons and also the radial enconder are on PIND
+* The keypad is mapped to PORTF, columns on pins 0-3, and rows on pin 4-7.
+*
+******************************************************************************
 */
+
 
 #include "navputter.h"
 
@@ -34,7 +46,7 @@ ISR (TIMER1_COMPA_vect)
 
 /*
  * simple circular buffer for holding keypresses until they can be transmitted
- * out the usb. Push the key and modifier. Key goes in high byte, mods low order.
+ * out the usb. Push the key and modifier. Key goes in high byte, modifiers in the low order byte.
  */
 void push_key( uint8_t key, uint8_t mod )
 {
@@ -73,9 +85,7 @@ void push_key( uint8_t key, uint8_t mod )
 uint16_t pop_key(void)
 {
     if ( out_key_tail == out_key_head ) 
-    {
         return 0;
-    }
     uint16_t key = out_key_buffer[ out_key_tail ];
     out_key_tail = ( out_key_tail == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_tail+1;
     return key; 
@@ -152,7 +162,7 @@ eeprom_layout_t global_config={
     {                       /* key sequences */
         { INT_CMD, IC_TOGGLE_MOUSE_KEYBOARD, 0, 0 },            /* key 0 is key slow / key fast / mouse toggle */
         { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },               /* up arrow key */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+		{ HID_KEYBOARD_SC_A << 8, HID_KEYBOARD_SC_B << 8, HID_KEYBOARD_SC_C << 8 , HID_KEYBOARD_SC_D << 8}, /* 'abcd' */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 
         { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },             /* right arrow key */
@@ -231,7 +241,7 @@ void cmd_map( FILE *fp, char *str )
     fprintf(fp, "successfully set key %d %d to seq %d\n\r", row, col, seq );
     return;
 ERROR:
-    fprintf(fp, "illegal format. Nothing chagned. Ex: map 1 2 2\n\r");
+    fprintf(fp, "Arr, illegal format. Nothing chagned. Ex: map 1 2 2\n\r");
     return;
 }
 
@@ -268,7 +278,7 @@ void cmd_seq( FILE *fp, char *str )
     fprintf( fp, "sequence %d set successfully\n\r", key_id);
     return;
 ERROR:
-    fprintf( fp, "illegal format. No change.\n\r");
+    fprintf( fp, "Arr, illegal format. No change.\n\r");
 }
 
 void cmd_save( FILE *fp, char *str )
@@ -333,30 +343,35 @@ void run_event(uint8_t event_type, uint16_t event_number )
             uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
             uint8_t col = (uint8_t)(0x00ff & event_number);
             uint8_t seq = global_config.key_map[row][col];
-            if ( global_config.key_seq[ seq ][ 0 ] )
+            uint8_t i;
+            for (i=0; i<MAX_KEYS_PER_SEQ; i++ )
             {
-                uint8_t key_out = (global_config.key_seq[ seq ][0] & 0xff00 ) >> 8;
-                uint8_t mod_out = (global_config.key_seq[ seq ][0] & 0x00ff );
-                mod_out = (global_config.key_seq[seq][0] & 0x00ff );
-                dbgprint("seq %d, key %x mod %x\n", seq, key_out, mod_out );
-                push_key( key_out, mod_out );
-            }
-            else
-            {
-                dbgprint("seq %d no key\n", seq );
+                if ( global_config.key_seq[ seq ][ i ] )
+                {
+                    uint8_t key_out = (global_config.key_seq[ seq ][i] & 0xff00 ) >> 8;
+                    uint8_t mod_out = (global_config.key_seq[ seq ][i] & 0x00ff );
+                    push_key( key_out, mod_out );
+                }
+                else break;
             }
             global_mouse_dir |= global_config.mouse_map[row][col];
         }
         break;
         case EVENT_KEY_UP:
-            if ( event_number & (B_Z_IN|B_Z_OUT) )
-                last_zoom_dir = 0;
+            if ( (event_number == B_Z_IN) || (event_number == B_Z_OUT) )
+            {
+                dbgprint("z up %d\n", event_number ); 
+                last_zoom_dir = 0xff;
+            }
         break;
         case EVENT_KEY_DOWN:
-            if ( event_number & (B_Z_IN|B_Z_OUT) )
+            dbgprint("z down %d\n", event_number ); 
+            if ( (event_number == B_Z_IN) || (event_number == B_Z_OUT) )
             {
-                if ( !last_zoom_dir )
+                if ( last_zoom_dir == 0xff )
+                {
                     last_zoom_dir = event_number;
+                }
                 else
                 {
                     if ( last_zoom_dir == B_Z_IN )
@@ -400,42 +415,37 @@ void start_timer(void)
 #define DEBOUNCE_COUNT 10
 void poll_buttons(void)
 {
-    static uint8_t last_input=0;
-    uint8_t input = PIND & 0x7f;
-    uint8_t i;
-    static uint8_t counts[8] = {0};
-    for ( i=0; i<8; i++ )
-    {
-        if ( ( input & (1<<i) ) == ( last_input & (1<<i) ) )
-        {
-            if ( counts[i] == DEBOUNCE_COUNT )
-            {
-                if ( input & (1<<i) )
-                    run_event( EVENT_KEY_UP, (uint16_t)1<<i );
-                else
-                    run_event( EVENT_KEY_DOWN, (uint16_t)1<<i );
-                counts[i]++;
-            }
-            else if ( counts[i] < DEBOUNCE_COUNT ) counts[i]++;
-        }
-        else
-        {
-            counts[i]=0;
-            last_input &= ~(1<<i);
-            last_input |= input & (1<<i);
-        }
-    }
+    static uint16_t button_state[TOTAL_BUTTONS]={0};
+    
+    #define BUTTON( e, ddr, num, pin ) \
+    if ( (button_state[num] & 0x00ff) != (pin & (1<<num)) )\
+    {\
+        button_state[num] = 0x0000 | (uint16_t)(pin & (1<<num));\
+    }    \
+    else\
+    {\
+        if ( !(button_state[num] & 0xff00 )  )\
+        {\
+            button_state[num] |= 0x0100;\
+            uint8_t event = (pin & (1<<num))? EVENT_KEY_UP : EVENT_KEY_DOWN;\
+            run_event( event, num );\
+        }\
+    }\
+
+    BUTTON_LIST
+
+    #undef BUTTON
 }
 
 void send_zoom_in( void )
 {
-    dbgprint("zoom in");
+    dbgprint("zoom in\n");
 }
 
 
 void send_zoom_out( void )
 {
-    dbgprint("zoom out");
+    dbgprint("zoom out\n");
 }
 
 
@@ -551,6 +561,7 @@ int main(void)
 	{
         lufa_main_loop();
         read_keypad();
+        poll_buttons();
         char c=0;
   /* Must throw away unused bytes from the host, or it will lock up while waiting for the device */
 

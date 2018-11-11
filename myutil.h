@@ -1,6 +1,6 @@
 #include "uTFT_ST7735.h"
 
-//#define DEBUG 1
+#define DEBUG 1
 #ifdef DEBUG
 extern uint8_t dbgpos;
 #define dbgprint( fmt, ... )\
