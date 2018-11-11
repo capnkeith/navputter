@@ -7,6 +7,8 @@
 #include "uTFT_ST7735.h"
 #include "myutil.h"
 #include "xatoi.h"
+#include "minmea.h"
+
 
 void poll_buttons(void);
 void run_event(uint8_t event_type, uint16_t event_number );

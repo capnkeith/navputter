@@ -19,7 +19,7 @@ uint8_t out_key_tail = 0;                       /* tail index for the keypress b
 volatile uint32_t global_ticks=0;               /* milliseconds since boot */
 uint8_t global_mouse_dir=0;                     /* bitmask of all current mouse directions and clicks */
 uint8_t global_mouse_mode = KEY_SLOW_MODE;      /* current mode ( slow key, fast key, mouse ) */
-
+FILE *gfp=NULL;
 
 /* 
  * this is our timer interrupt service routine. This is a real interrupt service routine, so
@@ -81,12 +81,6 @@ uint16_t pop_key(void)
     return key; 
 }
 
-
-/* TODO hook up nmea parsing here */
-void nmea_input( FILE *fp, char *input )
-{
-    dbgprint("nmea: %s\n\r", input );
-}
 
 
 #define USAGE_LIST\
@@ -545,7 +539,7 @@ int main(void)
     FILE stream;
     FILE *fp = &stream;
     CDC_Device_CreateStream(&VirtualSerial_CDC_Interface, &stream);
-   
+    gfp = fp; 
 #define MAX_LINE_SIZE 256 
     static char serial_input[MAX_LINE_SIZE+1];
     static uint16_t ix=0;
@@ -560,32 +554,21 @@ int main(void)
         char c=0;
   /* Must throw away unused bytes from the host, or it will lock up while waiting for the device */
 
-
-#define STARTUP_DELAY 10000 /* if someone can make a char by char nmea parser we can avoid this */
-        if ( global_ticks < STARTUP_DELAY ) 
-        {
-            CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
-            continue; /* wait for the at commands to end */
-        }
 		c = fgetc(fp);
-        static uint8_t once=0;
-        if ( !once ) 
-        {
-            once=1;
-            fprintf(fp, "Navputter ready Cap'n\n\r");
-        }
         if ( c && (c != 0xff) ) 
         {
+            fprintf( fp, "%c", c );
             serial_input[ix]=c;
             ix = (ix < MAX_LINE_SIZE ) ? ix+1 : ix;
             
             if ((c=='\n') || (c=='\r'))
             {
-                fprintf( fp, "u entered %s", serial_input );
                 if ( serial_input[0] == '$' )
                 {
-                    fprintf( fp, "it is nmea %s\n\r", serial_input );
+                    fflush(fp);
                     nmea_input( fp, serial_input );
+                    serial_input[ix]=0; 
+                    ix=0;
                 }
                 else
                 {

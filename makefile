@@ -67,7 +67,7 @@ TARGET       = navputter
 SRC          = $(TARGET).c VirtualSerialMouse.c Descriptors.c uTFT_ST7735.c myutil.c minmea.c navnmea.c navkeys.c $(LUFA_SRC_USB)
 LUFA_PATH    = ../../../../LUFA
 CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/
-LD_FLAGS     =
+LD_FLAGS     = 
 
 # Default target
 all:
@@ -92,10 +92,10 @@ F_CPU        = 16000000
 F_USB        = $(F_CPU)
 OPTIMIZATION = s
 TARGET       = navputter
-SRC          = $(TARGET).c VirtualSerialMouse.c Descriptors.c uTFT_ST7735.c myutil.c minmea.c $(LUFA_SRC_USB) $(LUFA_SRC_USBCLASS)
+SRC          = $(TARGET).c VirtualSerialMouse.c Descriptors.c uTFT_ST7735.c myutil.c navnmea.c minmea.c $(LUFA_SRC_USB) $(LUFA_SRC_USBCLASS)
 LUFA_PATH    = ../../../../LUFA
 CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/
-LD_FLAGS     =
+LD_FLAGS     = -Wl,-u,vfprintf -lprintf_flt -lm 
 
 # Default target
 all:

@@ -1,8 +1,11 @@
 #include "uTFT_ST7735.h"
 
+//#define DEBUG 1
+#ifdef DEBUG
+extern uint8_t dbgpos;
 #define dbgprint( fmt, ... )\
 {\
-    static char buf[80];\
+    char buf[80];\
     setCursor(0,dbgpos);\
     print(" ");\
     dbgpos = (dbgpos < 159) ? dbgpos + 8 : 0;\
@@ -14,5 +17,19 @@
     print( buf );\
     print( "    " );\
 }
+#else
+#define dbgprint( fmt, ... )
+#endif
 
-extern uint8_t dbgpos;
+
+#define printtext( x, y, fmt, ... )\
+{\
+    char buf[80];\
+    setCursor( x, y );\
+    print("                     ");\
+    sprintf( buf, fmt, ##__VA_ARGS__ );\
+    setCursor( x, y );\
+    print(buf);\
+}
+
+
