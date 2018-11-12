@@ -126,6 +126,7 @@ typedef struct eeprom_layout
     uint8_t         key_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
     uint8_t         key_map2[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
     uint8_t         mouse_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
+    uint8_t         button_map[ MAX_BUTTONS][ MAX_KEY_COLS ];  
     uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];
 }eeprom_layout_t;
 
@@ -136,54 +137,127 @@ typedef struct eeprom_layout
 /*
  * This is the factory defaul settting for key mappings. If you flash eeprom will get
  * written to this value, or you can set the version ( eeprom location 0 ) to 0xff and
- * eeprom will get factory rest on the next power up 
+ * eeprom will get factory rest on the next power up. This happens when the device
+ * is programmed as well.
+ *
  */
 
+
+/*
+   functionally we want this for all 3 maps
+
+
+   ---------------------------------------------------
+    toggle      |   up      | anchor    |routstart
+   ---------------------------------------------------
+    left        |markboat   | right     |routend 
+   ---------------------------------------------------
+    zim         | down      | zout      |routenext 
+   ---------------------------------------------------
+    daynight    |track      |follow     |drop cursor
+   ---------------------------------------------------
+
+  flow key set maps like this:
+  
+   ---------------------------------------------------
+   |INT        | alt+up    | A         |crrl+r 
+   ---------------------------------------------------
+   |alt+lt     | ctrl+o    | alt+rt    | esc 
+   ---------------------------------------------------
+   |alt+ +     | alt+down  | alt + -   | ctrl+n
+   ---------------------------------------------------
+   | f5        |  ?        | F2        | ctrl+m     
+   ---------------------------------------------------
+
+  fast key set maps like this:
+
+
+   ---------------------------------------------------
+   |INT         | up        | A         |  ctrl+r 
+   ---------------------------------------------------
+   |lt          | ctrl+o    | rt        | esc  
+   ---------------------------------------------------
+   |  +         | down      | -         | ctrl+n  
+   ---------------------------------------------------
+   | f5         |  ?        |F2         | ctrl+m     
+   ---------------------------------------------------
+
+mouse map is like this:
+
+   ---------------------------------------------------
+   |INT         | mouse up  | A         | ctrl_r
+   ---------------------------------------------------
+   |mouseleft   | ctrl+o    |mousert    | esc 
+   ---------------------------------------------------
+   |  alt+ +    | mouse down| alt + -   | ctrl+n 
+   ---------------------------------------------------
+   | f5          ?          | f2        | ctrl_+m
+   ---------------------------------------------------
+*/
+
+ 
 eeprom_layout_t global_config={
     {1,4,4,0},              /* version 1, 4 rows, 4 cols  */
-    {                       /* key map 1 ( slow map ) */
+
+    /* key map 1 ( slow map ) */
+    {                       
         {0,1,2,3},
         {4,5,6,7},
         {8,9,10,11},
         {12,13,14,15}
-    },                      /* key map 2 ( fast map ) */
+    },                      
+
+    /* key map 2 ( fast map ) */
     {
         {0,16,2,3},
         {17,5,18,7},
-        {8,19,10,11},
+        {20,19,21,11},
         {12,13,14,15}
-    },      
-    {                       /* mouse map */
-        { 0, MOUSE_DIR_UP, 0, 0 }, 
+    },
+    
+ 
+
+#define MOUSE_KEY 0x80                                          /* key map contains a mouse molve or mouse map contains a key seq */
+ 
+    /* mouse map */
+    {
+        { MOUSE_KEY | 0, MOUSE_DIR_UP, 0, 0 }, 
         { MOUSE_DIR_LEFT, 0, MOUSE_DIR_RIGHT, 0 }, 
         { 0, MOUSE_DIR_DOWN, 0, 0 },
         { MOUSE_LT_CLICK, MOUSE_RT_CLICK, 0, 0 }
+        { MOUSE_KEY | 2, 0, 0, 0 }                              /* high order bit marks key seq in mouse map */
     },             
-    {                       /* key sequences */
-        { INT_CMD, IC_TOGGLE_MOUSE_KEYBOARD, 0, 0 },            /* key 0 is key slow / key fast / mouse toggle */
-        { HID_KEYBOARD_SC_UP_ARROW << 8, 0,0,0 },               /* up arrow key */
-		{ HID_KEYBOARD_SC_A << 8, HID_KEYBOARD_SC_B << 8, HID_KEYBOARD_SC_C << 8 , HID_KEYBOARD_SC_D << 8}, /* 'abcd' */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
 
-        { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },             /* right arrow key */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },            /* left arrow key */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+    /* key sequences */
 
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-        { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },             /* down arrow key */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+    {
+        { INT_CMD, IC_TOGGLE_MOUSE_KEYBOARD, 0, 0 },                                            /* key 0 is key slow / key fast / mouse toggle */
+        { HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0,0,0 },               /* slow up arrow key */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                                                    /* bottom features */
+		{ HID_KEYBOARD_SC_R << 8 | HID_KEYBOARD_MODIFER_LEFTCTRL, 0, 0, 0 },                    /* route start */
 
-		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8, 0, 0, 0 },/* 'a' */
-		{ HID_KEYBOARD_SC_KEYPAD_PLUS_AND_MINUS << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0, 0, 0 }, /* 'a' */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
-		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                    /* 'a' */
+        { HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0,0,0 },             /* slow left arrow key */
+		{ HID_KEYBOARD_SC_O << 8 | HID_KEYBOARD_MODIFIER_LEFTCTRL, 0, 0, 0 },                   /* mark at boat */
+        { HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0,0,0 },            /* slow right arrow key */
+		{ HID_KEYBOARD_SC_ESC << 8, 0, 0, 0 },                                                  /* route end */
 
-        { HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },       /* speed key up arrow seq */
-        { HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },     /* speed key left seq */
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },    /* speed key right seq */
-        { HID_KEYBOARD_SC_DOWN_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTSHIFT, 0,0,0 },     /* speed key down seq */
+		{ HID_KEYBOARD_SC_EQUAL_AND_PLUS<<8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, 0 },         /* zoom in slow */
+        { HID_KEYBOARD_SC_DOWN_ARROW << 8   | HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, 0 },         /* down arrow key */
+		{ HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE<<8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, 0 },   /* zoom out slow */
+		{ HID_KEYBOARD_SC_N << 8 | HID_KEYBOARD_MODIFER_LEFTCTRL, 0, 0, 0 },                    /* routept next */
+
+		{ HID_KEYBOARD_SC_KEYPAD_F5 << 8, 0, 0, 0 },                                            /* day/night */
+		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                                                    /* should be tracking but no hotkey */
+		{ HID_KEYBOARD_SC_KEYPAD_F2 << 8, 0, 0, 0 },                                            /* follow */
+		{ HID_KEYBOARD_SC_M << 8 | HID_KEYBOARD_MODIFER_LEFTCTRL, 0, 0, 0 },                    /* mark at cursor pos */
+ 
+        { HID_KEYBOARD_SC_UP_ARROW << 8, 0, 0,0 },                                              /* fast up */
+        { HID_KEYBOARD_SC_LEFT_ARROW << 8, 0,0,0 },                                             /* fast left */
+        { HID_KEYBOARD_SC_RIGHT_ARROW << 8, 0,0,0 },                                            /* fast right */
+        { HID_KEYBOARD_SC_DOWN_ARROW << 8, 0,0,0 },                                             /* fast down */
+
+		{ HID_KEYBOARD_SC_EQUAL_AND_PLUS<<8, 0, 0, 0 },                                         /* zoom in fast */
+		{ HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE<<8, 0, 0, 0 },                                   /* zoom out fast */
     }
 };
 
@@ -319,6 +393,53 @@ void run_internal_cmd( uint16_t cmd )
     }
 }
 
+void push_seq( uint8_t seq )
+{
+    uint8_t i;
+
+    for (i=0; i<MAX_KEYS_PER_SEQ; i++ )
+    {
+        if ( global_config.key_seq[ seq ][ i ] )
+        {
+            uint8_t key_out = (global_config.key_seq[ seq ][i] & 0xff00 ) >> 8;
+            uint8_t mod_out = (global_config.key_seq[ seq ][i] & 0x00ff );
+            push_key( key_out, mod_out );
+        }
+        else return;
+    }
+}
+
+
+void handle_keyseq( uint8_t event, uint8_t seq )
+{
+    if ( seq & MOUSE_KEY )      /* key maps can have mouse events with the MOUSE_KEY bit set */
+    {
+        seq &= ~MOUSE_KEY;
+        handle_mouseseq( event, seq );
+    }
+    if ( event == EVENT_KEYPAD_DOWN )
+    {
+        if ( global_config.key_seq[seq][0] == INT_CMD )                
+            run_internal_cmd( global_config.key_seq[seq][1] );
+        else
+            push_seq(seq);
+    }
+}
+
+void handle_mouseseq( uint8_t event, uint8_t mousedir )
+{
+    if ( event & MOUSE_KEY )                /* put keys in mouse map with 0x80 flag */
+    {
+        handle_keyseq( event & ~MOUSE_KEY );     /* this is a key not a mouse button */
+    }
+    else                                    /* this is an actual mouse direction */
+    {
+        if ( event == EVENT_KEYPAD_DOWN )   
+            global_mouse_dir |= mousedir;   /* set the mouse direction(s) when key is pressed  */
+        else
+            global_mouse_dir &= ~mousedir;  /* clear the mouse direction(s) when key is released */
+    }
+}
 
 void run_event(uint8_t event_type, uint16_t event_number )
 {
@@ -329,32 +450,42 @@ void run_event(uint8_t event_type, uint16_t event_number )
         {
             uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
             uint8_t col = (uint8_t)(0x00ff & event_number);
-            uint8_t seq = global_config.key_map[row][col];
-
-            if ( global_config.key_seq[ seq ][0] == INT_CMD )
+            if ( global_mouse_mode == KEY_SLOW_MODE )
             {
-                run_internal_cmd( global_config.key_seq[seq][1] );
+                uint8_t seq = global_config.key_map[row][col];
+                handle_keyseq( EVENT_KEYPAD_UP, seq );
             }
-            global_mouse_dir &= ~global_config.mouse_map[row][col];
+            else if ( global_mouse_mode == KEY_FAST_MODE )
+            {
+                uint8_t seq = global_config.key_map2[row][col];
+                handle_keyseq( EVENT_KEYPAD_UP, seq );
+            }
+            else    
+            {
+                uint8_t seq = global_config.mouse_map[row][col];
+                handle_mouseseq( EVENT_KEYPAD_UP, seq );
+            }
         }
         break;
         case EVENT_KEYPAD_DOWN:
         {
             uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
             uint8_t col = (uint8_t)(0x00ff & event_number);
-            uint8_t seq = global_config.key_map[row][col];
-            uint8_t i;
-            for (i=0; i<MAX_KEYS_PER_SEQ; i++ )
+            if ( global_mouse_mode == KEY_SLOW_MODE )
             {
-                if ( global_config.key_seq[ seq ][ i ] )
-                {
-                    uint8_t key_out = (global_config.key_seq[ seq ][i] & 0xff00 ) >> 8;
-                    uint8_t mod_out = (global_config.key_seq[ seq ][i] & 0x00ff );
-                    push_key( key_out, mod_out );
-                }
-                else break;
+                uint8_t seq = global_config.key_map[row][col];
+                handle_keyseq( EVENT_KEYPAD_DOWN, seq );
             }
-            global_mouse_dir |= global_config.mouse_map[row][col];
+            else if ( global_mouse_mode == KEY_FAST_MODE )
+            {
+                uint8_t seq = global_config.key_map2[row][col];
+                handle_keyseq( EVENT_KEYPAD_DOWN, seq );
+            }
+            else    
+            {
+                uint8_t seq = global_config.mouse_map[row][col];
+                handle_mouseseq( EVENT_KEYPAD_DOWN, seq );
+            }
         }
         break;
         case EVENT_KEY_UP:
