@@ -186,6 +186,8 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
                                          void* ReportData,
                                          uint16_t* const ReportSize)
 {
+    static uint8_t mod = 0;
+    static uint32_t empty=0;
 	if (global_mouse_mode != MOUSE_MODE)
 	{
         USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
@@ -194,17 +196,30 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
             uint16_t key = pop_key();
             if ( key )
             {
-                KeyboardReport->Modifier = key & 0x00ff;
+                mod = KeyboardReport->Modifier = key & 0x00ff;
 		        KeyboardReport->KeyCode[0] = (key & 0xff00) >> 8;
+            }
+            else
+            {     
+                if ( mod & ( HID_KEYBOARD_MODIFIER_RIGHTALT | HID_KEYBOARD_MODIFIER_LEFTALT)) 
+                {
+                    if ( empty++ > 400 )
+                    {
+                        mod = 0;
+                        empty=0;
+                    }
+                }
+                else mod = 0;
             }
             key_state = CLEAR_KEY;
         }
-        else if ( key_state == CLEAR_KEY )
+        else
         {
-            KeyboardReport->Modifier = 0; 
-//		    KeyboardReport->KeyCode[0] = 0;
+            KeyboardReport->Modifier = mod;
+		    KeyboardReport->KeyCode[0] = 0;
             key_state = SEND_KEY;
         }
+        KeyboardReport->Modifier = mod;
 		*ReportID   = HID_REPORTID_KeyboardReport;
 		*ReportSize = sizeof(USB_KeyboardReport_Data_t);
         return false;
@@ -233,6 +248,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 		return true;
 	}
 }
+
 
 /** HID class driver callback function for the processing of HID reports from the host.
  *

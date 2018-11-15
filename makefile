@@ -29,6 +29,7 @@
 # to get a full listing.
 #
 AVRDUDE_PROGRAMMER = usbasp
+#AVRDUDE_PROGRAMMER = usbtiny
 AVRDUDE = avrdude
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
