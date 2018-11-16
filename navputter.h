@@ -87,14 +87,15 @@ enum internal_commands  /* this is the list of internal commands */
     IC_TOGGLE_MOUSE_KEYBOARD = 0,
 };
 
+#define MOUSE_MOVE 0x80
 enum mouse_events       /* these are the different mouse directions and clicks in global_mouse_dir */
 {
-    MOUSE_DIR_UP =      0x1,
-    MOUSE_DIR_DOWN =    0x2,
-    MOUSE_DIR_LEFT =    0x4,
-    MOUSE_DIR_RIGHT =   0x8,
-    MOUSE_LT_CLICK =    0x10,
-    MOUSE_RT_CLICK =    0x20,
+    MOUSE_DIR_UP =      MOUSE_MOVE | 0x1,
+    MOUSE_DIR_DOWN =    MOUSE_MOVE | 0x2,
+    MOUSE_DIR_LEFT =    MOUSE_MOVE | 0x4,
+    MOUSE_DIR_RIGHT =   MOUSE_MOVE | 0x8,
+    MOUSE_LT_CLICK =    MOUSE_MOVE | 0x10,
+    MOUSE_RT_CLICK =    MOUSE_MOVE | 0x20,
 };
 
 #define CTC_MATCH_OVERFLOW (uint8_t)(( (uint32_t)F_CPU / (uint32_t)1000) / (uint32_t)8)

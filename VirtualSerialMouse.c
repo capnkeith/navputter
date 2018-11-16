@@ -188,7 +188,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 {
     static uint8_t mod = 0;
     static uint32_t empty=0;
-	if (global_mouse_mode != MOUSE_MODE)
+	if (!global_mouse_dir)
 	{
         USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
         if ( key_state == SEND_KEY )
@@ -201,15 +201,16 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
             }
             else
             {     
+/*
                 if ( mod & ( HID_KEYBOARD_MODIFIER_RIGHTALT | HID_KEYBOARD_MODIFIER_LEFTALT)) 
                 {
-                    if ( empty++ > 400 )
+                    if ( empty++ > 1000 )
                     {
                         mod = 0;
                         empty=0;
                     }
                 }
-                else mod = 0;
+                else*/ mod = 0;
             }
             key_state = CLEAR_KEY;
         }

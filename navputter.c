@@ -120,14 +120,16 @@ typedef struct eeprom_header
 #define MAX_KEY_COLS        4
 #define MAX_KEY_SEQ         32
 #define MAX_KEYS_PER_SEQ    4
+
+
 typedef struct eeprom_layout
 {
     eeprom_header_t config;
-    uint8_t         key_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
-    uint8_t         key_map2[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
-    uint8_t         mouse_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];  
-    uint8_t         button_map[TOTAL_BUTTONS][ MAX_KEY_COLS ];  
-    uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];
+    uint8_t         key_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];             /* slow key map */
+    uint8_t         key_map2[ MAX_KEY_ROWS][ MAX_KEY_COLS ];            /* fast key map */ 
+    uint8_t         mouse_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];           /* mouse map */
+    uint8_t         button_map[TOTAL_BUTTONS][ MAX_KEY_COLS ];          /* button map */
+    uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];         /* key sequences */
 }eeprom_layout_t;
 
 
@@ -216,14 +218,13 @@ eeprom_layout_t global_config={
     },
     
 
-#define MOUSE_KEY 0x80                                          /* key map contains a mouse molve or mouse map contains a key seq */
  
     /* mouse map */
     {
-        { MOUSE_KEY | 0,        MOUSE_DIR_UP,       MOUSE_KEY | 2,      MOUSE_KEY | 3   }, 
-        { MOUSE_DIR_LEFT,       MOUSE_KEY | 5,      MOUSE_DIR_RIGHT,    MOUSE_KEY | 6   }, 
-        { MOUSE_KEY | 8,        MOUSE_DIR_DOWN,     MOUSE_KEY | 10,     MOUSE_KEY | 11  },
-        { MOUSE_LT_CLICK,       MOUSE_RT_CLICK,     MOUSE_KEY | 14,     MOUSE_KEY | 15  },
+        { 0,                    MOUSE_DIR_UP,       2,                  3   }, 
+        { MOUSE_DIR_LEFT,       5,                  MOUSE_DIR_RIGHT,    7   }, 
+        { 8,                    MOUSE_DIR_DOWN,     10,                 11  },
+        { MOUSE_LT_CLICK,       MOUSE_RT_CLICK,     14,                 15  },
     },             
 
 /* map misc buttons and the radial encoder to different functions */
@@ -235,18 +236,18 @@ eeprom_layout_t global_config={
 
     {
         { INT_CMD, IC_TOGGLE_MOUSE_KEYBOARD, 0, 0 },                                            /* key 0 is key slow / key fast / mouse toggle */
-        { HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0,0,0 },               /* slow up arrow key */
+        { HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_UP_ARROW << 8 | HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_MODIFIER_LEFTALT, 0 },               /* slow up arrow key */
 		{ HID_KEYBOARD_SC_A << 8, 0, 0, 0 },                                                    /* bottom features */
 		{ HID_KEYBOARD_SC_R << 8 | HID_KEYBOARD_MODIFIER_LEFTCTRL, 0, 0, 0 },                    /* route start */
 
-        { HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_RIGHTALT, 0,0,0 },             /* slow left arrow key */
+        { HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_LEFT_ARROW << 8 | HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_MODIFIER_RIGHTALT,0 },             /* slow left arrow key */
 		{ HID_KEYBOARD_SC_O << 8 | HID_KEYBOARD_MODIFIER_LEFTCTRL, 0, 0, 0 },                   /* mark at boat */
-        { HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_RIGHTALT, 0,0,0 },            /* slow right arrow key */
+        { HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW << 8 | HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_MODIFIER_RIGHTALT,0 },            /* slow right arrow key */
 		{ HID_KEYBOARD_SC_ESCAPE << 8, 0, 0, 0 },                                                  /* route end */
 
-		{ HID_KEYBOARD_SC_EQUAL_AND_PLUS<<8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, 0 },         /* zoom in slow */
+		{ HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS<<8 | HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_MODIFIER_LEFTALT, 0 },         /* zoom in slow */
         { HID_KEYBOARD_SC_DOWN_ARROW << 8   | HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, 0 },         /* down arrow key */
-		{ HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE<<8 | HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, 0 },   /* zoom out slow */
+		{ HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE<<8 | HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_MODIFIER_LEFTALT, 0 },   /* zoom out slow */
 		{ HID_KEYBOARD_SC_N << 8 | HID_KEYBOARD_MODIFIER_LEFTCTRL, 0, 0, 0 },                    /* routept next */
 
 		{ HID_KEYBOARD_SC_F5 << 8, 0, 0, 0 },                                                   /* day/night */
@@ -415,31 +416,34 @@ void push_seq( uint8_t seq )
 
 void handle_keyseq( uint8_t event, uint8_t seq )
 {
-    if ( seq & MOUSE_KEY )      /* key maps can have mouse events with the MOUSE_KEY bit set */
+    if ( seq & MOUSE_MOVE )  
     {
-        seq &= ~MOUSE_KEY;
         handle_mouseseq( event, seq );
     }
-    if ( event == EVENT_KEYPAD_DOWN )
+    else
     {
-        if ( global_config.key_seq[seq][0] == INT_CMD )                
-            run_internal_cmd( global_config.key_seq[seq][1] );
-        else
+        if ( event == EVENT_KEYPAD_DOWN )
         {
-            dbgprint("pressed key %d\n", seq );
-            push_seq(seq);
+            if ( global_config.key_seq[seq][0] == INT_CMD )                
+                run_internal_cmd( global_config.key_seq[seq][1] );
+            else
+            {
+                dbgprint("pressed key %d\n", seq );
+                push_seq(seq);
+            }
         }
     }
 }
 
 void handle_mouseseq( uint8_t event, uint8_t mousedir )
 {
-    if ( mousedir & MOUSE_KEY )                /* put keys in mouse map with 0x80 flag */
+    if ( !(mousedir & MOUSE_MOVE) )            
     {
-        handle_keyseq( event,  mousedir & ~MOUSE_KEY );  /* this is a key not a mouse button */
+        handle_keyseq( event,  mousedir );
     }
-    else                                    /* this is an actual mouse direction */
+    else     
     {
+        mousedir &= ~MOUSE_MOVE;           /* just the direction bit now */
         if ( event == EVENT_KEYPAD_DOWN )   
             global_mouse_dir |= mousedir;   /* set the mouse direction(s) when key is pressed  */
         else
