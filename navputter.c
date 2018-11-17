@@ -368,22 +368,78 @@ CMD_LIST
 fprintf( fp, "Enter Command:\n\r");
 }
 
+uint8_t mouse_char_to_move( char move )
+{
+    switch(move)
+    {
+        case 'U' : return MOUSE_DIR_UP;
+        case 'D' : return MOUSE_DIR_DOWN;
+        case 'L' : return MOUSE_DIR_LEFT;
+        case 'R' : return MOUSE_DIR_RIGHT;
+        case 'l' : return MOUSE_LT_CLICK;
+        case 'r' : return MOUSE_RT_CLICK;
+        default : return 0;
+    }
+}
+
+char mouse_move_to_char( uint8_t move )
+{
+    switch(move)
+    {
+        case MOUSE_DIR_UP:      return 'U';
+        case MOUSE_DIR_DOWN:    return 'D';
+        case MOUSE_DIR_LEFT:    return 'L';
+        case MOUSE_DIR_RIGHT:   return 'R';
+        case MOUSE_LT_CLICK:    return 'l';
+        case MOUSE_RT_CLICK:    return 'r';
+        default: return 0;
+    }
+};
+    
 
 void cmd_dump( FILE *fp, char *str )
 {
     fprintf(fp, "Navputter ver=%d, %dx%d keymap\n\r", global_config.config.version, global_config.config.rows, global_config.config.cols );
-    fprintf(fp, "keymap dump:\n\r");
+    fprintf(fp, "keymap 1 (slow map):\n\r");
     
     uint8_t c, r;
     for ( r=0; r< global_config.config.rows; r++ )
     {
         for ( c=0; c< global_config.config.cols; c++ )
         {
-            fprintf(fp,"%2d ", global_config.key_map[ r ][ c ] );
+            if ( global_config.key_map[r][c] & MOUSE_MOVE )
+                fprintf(fp," %c ", mouse_move_to_char( global_config.key_map[ r ][ c ] ) );
+            else
+                fprintf(fp,"%2d ", global_config.key_map[ r ][ c ] );
         }
         fprintf(fp, "\n\r" );
     }
-    fprintf(fp, "key sequences. Key map referrers to these:\n\r");
+    fprintf(fp, "keymap 2 (fast map):\n\r");
+    for ( r=0; r< global_config.config.rows; r++ )
+    {
+        for ( c=0; c< global_config.config.cols; c++ )
+        {
+            if ( global_config.key_map2[r][c] & MOUSE_MOVE )
+                fprintf(fp," %c ", mouse_move_to_char( global_config.key_map2[ r ][ c ] ) );
+            else
+                fprintf(fp,"%2d ", global_config.key_map2[ r ][ c ] );
+        }
+        fprintf(fp, "\n\r" );
+    }
+    fprintf(fp, "mouse map:\n\r");
+    for ( r=0; r< global_config.config.rows; r++ )
+    {
+        for ( c=0; c< global_config.config.cols; c++ )
+        {
+            if ( global_config.mouse_map[r][c] & MOUSE_MOVE )
+                fprintf(fp," %c ", mouse_move_to_char( global_config.mouse_map[ r ][ c ] ) );
+            else
+                fprintf(fp,"%2d ", global_config.mouse_map[ r ][ c ] );
+        }
+        fprintf(fp, "\n\r" );
+    }
+
+    fprintf(fp, "key sequences. Numbers in the maps refer to these by inde\n\r");
     for ( r=0; r< MAX_KEY_SEQ; r++ )
     {
         fprintf( fp, "%d: ", r );
@@ -397,22 +453,47 @@ void cmd_dump( FILE *fp, char *str )
     }
 }
 
-void cmd_map( FILE *fp, char *str )
+void cmd_map( FILE *fp, char *str, uint8_t map[MAX_KEY_ROWS][MAX_KEY_COLS] )
 {
     uint8_t row = atoi(str);
-    char *c = strchr( str, ' ' );
+    char *c;
+    uint8_t seq;
+    c = strchr( str, ' ' );
     if ( !c ) goto ERROR;
     uint8_t col = atoi(c+1);
+    c = strchr( c+1, ' ' );
     if ( !c ) goto ERROR;
-    uint8_t seq = atoi(c+1);
+    if ( isdigit( *(c+1) ) )
+    {
+        seq = atoi(c+1);
+    }
+    else
+    {
+        seq = mouse_char_to_move( *(c+1) );
+        if ( !seq ) goto ERROR;
+    }
     global_config.key_map[row][col]=seq;
     fprintf(fp, "successfully set key %d %d to seq %d\n\r", row, col, seq );
     return;
 ERROR:
-    fprintf(fp, "Arr, illegal format. Nothing chagned. Ex: map 1 2 2\n\r");
+    fprintf(fp, "Arr, illegal format. Nothing chagned. Ex: 'map 1 2 2' or 'map 1 2 U'\n\r");
     return;
 }
 
+void cmd_mapm( FILE *fp, char *str )
+{
+    cmd_map( fp, str, global_config.mouse_map );
+}
+
+void cmd_mapf( FILE *fp, char *str )
+{
+    cmd_map( fp, str, global_config.key_map2 );
+}
+
+void cmd_maps( FILE *fp, char *str )
+{
+    cmd_map( fp, str, global_config.key_map );
+}
 
 void cmd_seq( FILE *fp, char *str )
 {
@@ -475,7 +556,6 @@ void reset_factory_default(void)
 
 void set_leds( uint8_t leds )
 {
-    uint8_t i;
 #define FIRST_LED_BIT  4        /* this is ugly */
 #define LED( e, bit, dir, port )                    \
     if ( leds & (1 << (bit-FIRST_LED_BIT)) )\

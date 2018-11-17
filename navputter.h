@@ -8,6 +8,7 @@
 #include "myutil.h"
 #include "xatoi.h"
 #include "minmea.h"
+#include "navnmea.h"
 
 
 void poll_buttons(void);
@@ -17,6 +18,9 @@ void start_timer(void);
 uint16_t pop_key(void);
 void handle_mouseseq( uint8_t event, uint8_t mousedir );
 void handle_keyseq( uint8_t event, uint8_t seq );
+void cmd_mapf( FILE *fp, char *str );
+void cmd_maps( FILE *fp, char *str );
+void cmd_mapm( FILE *fp, char *str );
 
 
 enum events             /* main event type for do_event() */
@@ -120,7 +124,9 @@ enum sequence_ids
 #define CMD_LIST \
     CMD( CMD_DUMP, dump, cmd_dump, "Dump current configuration. Ex: dump" ) \
     CMD( CMD_SEQ,  seq,  cmd_seq,  "Set a key sequence. Ex: seq 5 0x55 0x10, 0x55 0x00" ) \
-    CMD( CMD_MAP,  map,  cmd_map,  "Map a key to a sequence. Ex: map 1 5" ) \
+    CMD( CMD_MAPS, maps, cmd_maps, "Map a slow key. Ex: 'maps 1 5' or 'map 1 U'" ) \
+    CMD( CMD_MAPF, mapf, cmd_mapf, "Map a fast key to a sequence. Ex: 'mapf 1 5' or 'map 1 D" ) \
+    CMD( CMD_MAPM, mapm, cmd_mapm, "Map a mouse key to a sequence.Ex: 'mapm 1 U' or 'map 1 5'" ) \
     CMD( CMD_SAVE, save, cmd_save, "Save current configuration to eeprom. Ex: save" ) \
     CMD( CMD_HELP, help, cmd_help, "Show this help. Ex: help" ) \
 

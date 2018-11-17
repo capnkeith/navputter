@@ -81,7 +81,7 @@ void nmea_gsa_in( struct minmea_sentence_gsa *gsa )
     dbgprint("I got gsa\n");
 }    
 
-void nmea_gll_in( struct minmea_sentence_gsa *gll )
+void nmea_gll_in( struct minmea_sentence_gll *gll )
 {
     dbgprint("I got gll\n");
 }    
@@ -90,7 +90,7 @@ void nmea_gst_in( struct minmea_sentence_gst *gst )
 {
     dbgprint("I got gst\n");
 }    
-void nmea_gsv_in( struct minmea_sentence_gst *gsv )
+void nmea_gsv_in( struct minmea_sentence_gsv *gsv )
 {
     dbgprint("I got gsv\n");
 }    
@@ -102,7 +102,7 @@ void nmea_vtg_in( struct minmea_sentence_vtg *vtg )
     printtext(0,30, "SPEED: %2.2f kph\n", minmea_tofloat(&vtg->speed_kph));
 };
 
-void nmea_zda_in( struct minmea_sentence_zda *vzda )
+void nmea_zda_in( struct minmea_sentence_zda *zda )
 {
     dbgprint("I got zda\n");
 }    
