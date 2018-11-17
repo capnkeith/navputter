@@ -116,7 +116,7 @@
 *
 * seq - set a key sequence. Each key sequence can have up to 4 key presses,
 *   each keypress can have any number of key modifiers such as alt, shift, etc.
-*   All keys need to be entered numerically. Refer to keycodes.txt for the values
+*   All keys need to be entered numerically. Refer to keymap.txt for the values
 *   for each key and scancode.
 *   Example:
 *       seq 1 0x55 0, 0x56 0

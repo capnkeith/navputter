@@ -1,4 +1,10 @@
-#include "navputter.h"
+/*
+ * this is a stand alone program to dump out the numberical values of all the keycodes. Don't use this in the AVR!
+ */
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "scancodes.h"
 
 #define KEY_MOD_LIST\
     MOD( HID_KEYBOARD_MODIFIER_LEFTCTRL  )\
@@ -248,17 +254,17 @@
 		KEY(HID_KEYBOARD_SC_MEDIA_RELOAD)\
 		KEY(HID_KEYBOARD_SC_MEDIA_CALCULATOR)
 
-#define PAD_SZ 20
+#define PAD_SZ 60
 
-void dump_keycodes(FILE *fp)
+int main(int argc, char **argv )
 {
-    fprintf(fp,"Key modifier codes. These can be ORed together\n\r");
-#define MOD(e) fprintf(fp,"%s%*d\n\r", #e, PAD_SZ - strlen( #e ), e );
+    printf("Key modifier codes. These can be ORed together\n\r");
+#define MOD(e) printf("%s%*d (0x%x)\n\r", #e, (int)(PAD_SZ - (int)strlen( #e )), e, e );
 KEY_MOD_LIST
 #undef MOD
 
-    fprintf(fp,"Key scan codes.\n\r");
-#define KEY(e) fprintf(fp, "%s%*d\n\r", #e, PAD_SZ - strlen( #e ), e );
+    printf("Key scan codes.\n\r");
+#define KEY(e) printf( "%s%*d (0x%x)\n\r", #e, (int)(PAD_SZ - (int)strlen( #e )), e, e );
 KEY_SCAN_LIST
 #undef KEY
 }

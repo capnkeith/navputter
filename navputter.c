@@ -44,6 +44,13 @@
 *    USBASP programmer
 *
 ******************************************************************************
+*
+* Wiring: use pullup resistors on the radial encoder/buttons, pull down 
+* resistors on the keypad rows/cols. The LEDs are connected with annode to
+* pin and cathode to GND. I like using the internal pull ups in the uC but
+* I could not get this working for some reason. Possibly try it again.
+*
+******************************************************************************
 * 
 * port mappings:
 * 
@@ -68,6 +75,65 @@
 * different maps. key_map => slow mode, key_map2 => fast mode, mouse_map =>
 * mouse mode. 
 *
+*
+******************************************************************************
+*
+* Serial Interface:
+*
+* Navputter creates a virtual serial interface as well. You can enter commands
+* for configuring the eeprom or send NMEA sequences and have them parsed.
+*
+******************************************************************************
+*
+* Command Interfsce:
+*
+* To use the command interface connect to the virtual serial device with a
+* teriminal program such as minicom. Ubuntu e.g.: minicom -D /dev/ttyACM0
+*
+*
+* Mouse moves are specified with the chars:
+*    'U' - mouse move up
+*    'D' - mouse move down
+*    'L' - mouse move left
+*    'R' - mouse move right 
+*    'l' - mouse left click
+*    'r' - mouse right click
+*
+* The following siple commands are supported:
+*
+* help  - show some help
+* dump  - dump out all the eeprom data
+*
+* maps  - set a slow key mapping. Example: 
+*    maps 1 1 5  
+* This sets row 1, col 1 to key sequence 5. You can also set mouse moves 
+* instead such as:
+*    maps 1 1 U
+*
+* mapf  - sets a fast key mapping. Same syntax as maps above:
+*    mapf 1 1 U
+*
+* mapm -  set a mouse mapping. Same syntax as mapf above:
+*    mapm 1 1 U
+*
+* seq - set a key sequence. Each key sequence can have up to 4 key presses,
+*   each keypress can have any number of key modifiers such as alt, shift, etc.
+*   All keys need to be entered numerically. Refer to keycodes.txt for the values
+*   for each key and scancode.
+*   Example:
+*       seq 1 0x55 0, 0x56 0
+*   The above example sets key sequence 1 to be asterix then minus: '*-'
+*
+* save - this command save the current running key config to eeprom. Be 
+*   careful to test your key mapping before saving.
+*
+******************************************************************************
+*
+* NMEA via serial
+*
+* This code is there just to aid future expansion. I am not doing anyting 
+* with the NMEA except parsing it and displaying some of the data on the
+* display. For instance if you send
 *
 ******************************************************************************
 *
@@ -104,8 +170,7 @@
 ******************************************************************************
 TODO:
 
-* Currently key repeat does not working. I think it is best to handle it in
-  the uC.
+* Currently key repeat is not implemented. 
 
 ******************************************************************************
 *
@@ -235,11 +300,12 @@ uint16_t pop_key(void)
 
 
 #define USAGE_LIST\
-    USAGE( "----------------------------------------" )\
-    USAGE( "Navputter internal commands." ) \
-    USAGE( "This interface is for setting eeprom." )\
-    USAGE( "to send nmea prefix string with a $ char")\
-    USAGE( "----------------------------------------" )\
+    USAGE( "------------------------------------------------------------------------------)\
+    USAGE( "Navputter eeprom interface Cap'n.")\
+    USAGE( "Key maps should specify either a key sequence number, or a mouse direction:")\
+    USAGE( "U,D,L,R,l,r which stands for UP, DOWN, LEFT, RIGHT, LEFT CLICK, RIGHT CLICK. " )\
+    USAGE( "Key sequences must be specified numerically, see keycodes.txt for key values.");\
+    USAGE( "------------------------------------------------------------------------------)\
     USAGE( "Command list:")\
 
 
@@ -459,19 +525,22 @@ void cmd_map( FILE *fp, char *str, uint8_t mode )
     uint8_t seq;
     c = strchr( str, ' ' );
     if ( !c ) goto ERROR;
-    uint8_t row = atoi(c+1);
-    c = strchr( c+1, ' ' );
+    while( *c == ' ' ) c++;
+    uint8_t row = atoi(c);
+    c = strchr( c, ' ' );
     if ( !c ) goto ERROR;
-    uint8_t col = atoi(c+1);
-    c = strchr( c+1, ' ' );
+    while( *c == ' ' ) c++;
+    uint8_t col = atoi(c);
+    c = strchr( c, ' ' );
     if ( !c ) goto ERROR;
-    if ( isdigit( *(c+1) ) )
+    while( *c == ' ' ) c++;
+    if ( isdigit( *(c) ) )
     {
-        seq = atoi(c+1);
+        seq = atoi(c);
     }
     else
     {
-        seq = mouse_char_to_move( *(c+1) );
+        seq = mouse_char_to_move( *(c) );
         if ( !seq ) goto ERROR;
     }
     if ( mode == MOUSE_MODE ) global_config.mouse_map[row][col]=seq;
@@ -516,16 +585,19 @@ void cmd_seq( FILE *fp, char *str )
     uint16_t mod;
     for ( i=0; i< MAX_KEYS_PER_SEQ; i++ )
     {
-        if ( (*(c+1) == '0') && (tolower(*(c+2)) == 'x') )
-            sscanf( c+1, "%x", &key );
+        while( *c == ' ' ) c++;
+
+        if ( (*(c) == '0') && (tolower(*(c+1)) == 'x') )
+            sscanf( c, "%x", &key );
         else
-            key = atoi(c+1);
+            key = atoi(c);
         c = strchr( c+1, ' ' );
         if ( !c ) goto ERROR;
-        if ( (*(c+1) == '0') && (tolower(*(c+2)) == 'x') )
-            sscanf( c+1, "%x", &mod );
+        while( *c == ' ' ) c++;
+        if ( (*(c) == '0') && (tolower(*(c+1)) == 'x') )
+            sscanf( c, "%x", &mod );
         else 
-            mod = atoi(c+1);
+            mod = atoi(c);
         fprintf(fp, "key=%d, mod=%d\n\r", key, mod );
         global_config.key_seq[ key_id ][ i  ] = (key << 8) | mod;
         c = strchr( c, ',' );
@@ -534,7 +606,7 @@ void cmd_seq( FILE *fp, char *str )
     fprintf( fp, "sequence %d set successfully\n\r", key_id);
     return;
 ERROR:
-    fprintf( fp, "Arr, illegal format. No change.\n\r");
+    fprintf( fp, "Arr, illegal format. No change. Example: seq 1 0x55 0, 0x56 0\n\r");
 }
 
 void cmd_save( FILE *fp, char *str )
