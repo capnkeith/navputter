@@ -453,12 +453,14 @@ void cmd_dump( FILE *fp, char *str )
     }
 }
 
-void cmd_map( FILE *fp, char *str, uint8_t map[MAX_KEY_ROWS][MAX_KEY_COLS] )
+void cmd_map( FILE *fp, char *str, uint8_t mode )
 {
-    uint8_t row = atoi(str);
     char *c;
     uint8_t seq;
     c = strchr( str, ' ' );
+    if ( !c ) goto ERROR;
+    uint8_t row = atoi(c+1);
+    c = strchr( c+1, ' ' );
     if ( !c ) goto ERROR;
     uint8_t col = atoi(c+1);
     c = strchr( c+1, ' ' );
@@ -472,8 +474,13 @@ void cmd_map( FILE *fp, char *str, uint8_t map[MAX_KEY_ROWS][MAX_KEY_COLS] )
         seq = mouse_char_to_move( *(c+1) );
         if ( !seq ) goto ERROR;
     }
-    global_config.key_map[row][col]=seq;
-    fprintf(fp, "successfully set key %d %d to seq %d\n\r", row, col, seq );
+    if ( mode == MOUSE_MODE ) global_config.mouse_map[row][col]=seq;
+    else if ( mode == KEY_SLOW_MODE ) global_config.key_map[row][col]=seq;
+    else if ( mode == KEY_FAST_MODE ) global_config.key_map2[row][col]=seq;
+    if ( seq & MOUSE_MOVE )
+        fprintf(fp, "successfully set key %d %d to mouse move %c\n\r", row, col, mouse_move_to_char(seq) );
+    else
+        fprintf(fp, "successfully set key %d %d to seq %d\n\r", row, col, seq );
     return;
 ERROR:
     fprintf(fp, "Arr, illegal format. Nothing chagned. Ex: 'map 1 2 2' or 'map 1 2 U'\n\r");
@@ -482,17 +489,17 @@ ERROR:
 
 void cmd_mapm( FILE *fp, char *str )
 {
-    cmd_map( fp, str, global_config.mouse_map );
+    cmd_map( fp, str, MOUSE_MODE );
 }
 
 void cmd_mapf( FILE *fp, char *str )
 {
-    cmd_map( fp, str, global_config.key_map2 );
+    cmd_map( fp, str, KEY_FAST_MODE );
 }
 
 void cmd_maps( FILE *fp, char *str )
 {
-    cmd_map( fp, str, global_config.key_map );
+    cmd_map( fp, str, KEY_SLOW_MODE );
 }
 
 void cmd_seq( FILE *fp, char *str )
