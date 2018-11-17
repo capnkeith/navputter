@@ -1,10 +1,31 @@
 #include <avr/pgmspace.h>
 
 /******************** PORT AND PINS ************************************/
+
+
+// Navputter settings. These settings put the display on PORTC 0-3. You 
+// can move to any pins or remove entirely. This interface is for debug 
+// or you might want an nmea decode for heading or speed or somesuch...
+
+ #define SCK PC0
+ #define MOSI PC1
+ #define SPIREG DDRC
+ #define SPIPORT PORTC
+
+ #define RSREG DDRC
+ #define RSPORT PORTC
+ #define RS PC2
+
+ #define RSTREG DDRC
+ #define RSTPORT PORTC
+ #define RST PC3
+
+
 /*
  * change these according to your needs
  *
  */
+
 
 /*
 	// ATMEGA 328p (Arduino) with hardware SPI
@@ -39,19 +60,6 @@
  */
 
  #define SPI_SOFTWARE
-
- #define SCK PC0
- #define MOSI PC1
- #define SPIREG DDRC
- #define SPIPORT PORTC
-
- #define RSREG DDRC
- #define RSPORT PORTC
- #define RS PC2
-
- #define RSTREG DDRC
- #define RSTPORT PORTC
- #define RST PC3
 
 
 #define _width    128

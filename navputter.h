@@ -14,8 +14,6 @@ void poll_buttons(void);
 void run_event(uint8_t event_type, uint16_t event_number );
 void reset_factory_default(void);
 void start_timer(void);
-void send_zoom_in( void );
-void send_zoom_out( void );
 uint16_t pop_key(void);
 void handle_mouseseq( uint8_t event, uint8_t mousedir );
 void handle_keyseq( uint8_t event, uint8_t seq );
@@ -51,12 +49,13 @@ enum mouse_key_modes    /* global modes for slow keyboard / fast keyboard / mous
  */
 
 #define BUTTON_LIST\
-    BUTTON( B_Z_IN,     DDRD, 0, PIND )    /* radial encoder zoom in rot */     \
-    BUTTON( B_Z_OUT,    DDRD, 1, PIND )    /* radial encoder zoom out dir */    \
-    BUTTON( B_TOGGLE,   DDRD, 2, PIND )    /* toggle button */                  \
-    BUTTON( B_MISC,     DDRD, 3, PIND )    /* some other button */              
+    BUTTON( B_Z_IN,   0, DDRD, PIND )    /* radial encoder zoom in rot */     \
+    BUTTON( B_Z_OUT,  1, DDRD, PIND )    /* radial encoder zoom out dir */    \
+    BUTTON( B_TOGGLE, 2, DDRD, PIND )    /* toggle button */                  \
+    BUTTON( B_MISC,   3, DDRD, PIND )    /* some other button */              
 
-#define BUTTON( e, ddr, num, pin ) e,
+
+#define BUTTON( e, n, ddr, pin ) e,
 enum button_numbers
 {
     BUTTON_LIST
@@ -66,20 +65,19 @@ enum button_numbers
 
 
 /*
- * these are leds. I am lighting leds for the current state <slow key>=none, <fast key>=left, <mouse>=both
+ * these are leds. I am lighting leds for the current state <slow key>=left, <fast key>=right, <mouse>=both
  */
 #define LED_LIST\
-    LED( LED_1,         DDRD, 4, PORTD )    /* led 1 */                         \
-    LED( LED_2,         DDRD, 5, PORTD )    /* led 2 */                         \
+    LED( LED_1,         4, DDRD, PORTD )    /* led 1 */                         \
+    LED( LED_2,         5, DDRD, PORTD )    /* led 2 */                         \
 
-
-#define LED( e, ddr, num, pin ) e,
+#define LED( e, n, dd, port )  e,
 enum led_numbers
 {
-    LED_LIST 
+    LED_LIST
 };
-#undef BUTTON
-
+#undef LED
+ 
 
 #define INT_CMD 0xffff  /* not a key press but internal command from 2nd key seq */
 enum internal_commands  /* this is the list of internal commands */

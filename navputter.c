@@ -4,19 +4,168 @@
 * Navputer - like a putter for golf except for your sailboat.
 ******************************************************************************
 *
-* This is an original work by Seth Keth offered for free with no licese 
+* This work contains open source 3rd party libraries such as LUFA, minmea,
+* and uTFT_ST7735 at least. Each of these has its own licenses, the most 
+* restrictive of is LUFA. Please investigagte and respect each licnese 
+* appropriately. Also if you like this work, please donate to LUFA instead, 
+* LUFA is the real magic here.
+*
+******************************************************************************
+*
+* This file is an original work by Seth Keth offered for free with no licese 
 * whatsoever or if you prefer you can stick a WTFPL v2 on it. 
+*
+******************************************************************************
+*
+*
+*         .-'           Watch out for me!
+*    '--./ /     _.---.
+*    '-,  (__..-`       \
+*       \          .     |
+*        `,.__.   ,__.--/
+*          '._/_.'___.-`
+*            /  /
+*            __/
+*
+******************************************************************************
+*
+* Hardware: this project is currently set up for specific hardware. For 
+* easiest results start with identical harware. 
+*
+* Navputter assembled:
+*
+*   uC: Teensy++ 2.0. This is a at90usb1286.
+*   4x4 keypad ( multiplexed 8 pin type )
+*   simple radial encoder 
+*   simple push buttons (2)
+*   LEDs (2)
+*
+* For programming: 
+*    USBASP programmer
 *
 ******************************************************************************
 * 
 * port mappings:
+* 
+* Navputter currently has a 4x4 keypad ( PORTF ), 
+* An uTFT_ST7735 display ( PORTC 0-3 )
+* A radial encoder ( PIND0,1 )
+* misc buttons ( PIND2, 3 )
+* 2 LEDS ( PIND4, PIND5 )
 *
-* The display needs 4 pins PORTC 0-3 configured in uTFT_ST7735.h.
-* The individual buttons and also the radial enconder are on PIND
-* The keypad is mapped to PORTF, columns on pins 0-3, and rows on pin 4-7.
+* Everything is configured in navputter.h, except for the display which is
+* configured inside uTFT_ST7735.h 
 *
 ******************************************************************************
+*
+* Navputter operation:
+*
+* Navputter has 3 modes, selectable with the upper left button (default config). 
+* These modes are 'slow key mode', 'fast key mode', and 'mouse mode'. If you
+* have the LEDs connected they will light left, right, or both respectivley.
+*
+* In the 3 modes buttons are mapped to key sequences or mouse moves in the
+* different maps. key_map => slow mode, key_map2 => fast mode, mouse_map =>
+* mouse mode. 
+*
+*
+******************************************************************************
+*
+* Building:
+*
+* Navputter is currently set up to build as a demo of LUFA. To build navputter
+* first get and build lufa:
+*
+*    git clone https://github.com/abcminiuser/lufa lufa
+*    cd lufa
+*    make
+*
+* Now pull Navputter into the correct location:
+*
+*    cd Demos/Device/ClassDriver
+*    git clone https://github.com/capnkeith/navputter navputter
+*    cd navputter
+*    make
+*
+* Now program your AVR
+*
+*    make avrdude
+*
+* 
+* 
+******************************************************************************
+* 
+* Debugging:
+*   if DEBUG is defined you can use the dbgprint which is printf for 
+*   the lcd, or your can fprintf( gfp, ... ) to write out th serial adapter
+*   if you are debugging nmea you will be glad for the lcd. I think it is 
+*   possible to use an actual debugger somehow...
+* 
+******************************************************************************
+TODO:
+
+* Currently key repeat does not working. I think it is best to handle it in
+  the uC.
+
+******************************************************************************
+*
+
+Key Mappings:
+
+Navputter is fully eeprom customizable, but the first time after a fresh 
+program, or if you write 0xff to eeprom location 0, the eeprom will be reset
+to factory default which corresponds rougly to this function map below
+
+   ---------------------------------------------------
+    toggle      |   up      | anchor    |routstart
+   ---------------------------------------------------
+    left        |markboat   | right     |routend 
+   ---------------------------------------------------
+    zim         | down      | zout      |routenext 
+   ---------------------------------------------------
+    daynight    |track      |follow     |drop cursor
+   ---------------------------------------------------
+
+  flow key set maps like this:
+  
+   ---------------------------------------------------
+   |INT        | alt+up    | A         |crrl+r 
+   ---------------------------------------------------
+   |alt+lt     | ctrl+o    | alt+rt    | esc 
+   ---------------------------------------------------
+   |alt+ +     | alt+down  | alt + -   | ctrl+n
+   ---------------------------------------------------
+   | f5        |  ?        | F2        | ctrl+m     
+   ---------------------------------------------------
+
+  fast key set maps like this:
+
+
+   ---------------------------------------------------
+   |INT         | up        | A         |  ctrl+r 
+   ---------------------------------------------------
+   |lt          | ctrl+o    | rt        | esc  
+   ---------------------------------------------------
+   |  +         | down      | -         | ctrl+n  
+   ---------------------------------------------------
+   | f5         |  ?        |F2         | ctrl+m     
+   ---------------------------------------------------
+
+mouse map is like this:
+
+   ---------------------------------------------------
+   |INT         | mouse up  | A         | ctrl_r
+   ---------------------------------------------------
+   |mouseleft   | ctrl+o    |mousert    | esc 
+   ---------------------------------------------------
+   |  alt+ +    | mouse down| alt + -   | ctrl+n 
+   ---------------------------------------------------
+   | f5         | ?         | f2        | ctrl_+m
+   ---------------------------------------------------
+
+
 */
+
 
 
 #include "navputter.h"
@@ -26,23 +175,15 @@ extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 
 
 uint16_t out_key_buffer[ MAX_KEY_BUFFER_SZ ];   /* key presses going out the USB */
-uint8_t out_key_head = 0;                       /* head index for the keypress buffer */
-uint8_t out_key_tail = 0;                       /* tail index for the keypress buffer */
+
+                                                /* I don't know if volitle is required or not... */
+volatile uint8_t out_key_head = 0;              /* head index for the keypress buffer */
+volatile uint8_t out_key_tail = 0;              /* tail index for the keypress buffer */
+
 volatile uint32_t global_ticks=0;               /* milliseconds since boot */
 uint8_t global_mouse_dir=0;                     /* bitmask of all current mouse directions and clicks */
 uint8_t global_mouse_mode = KEY_SLOW_MODE;      /* current mode ( slow key, fast key, mouse ) */
 FILE *gfp=NULL;
-
-/* 
- * this is our timer interrupt service routine. This is a real interrupt service routine, so
- * don't try and do much in here. global_ticks is milliseconds since power on
- */
-
-ISR (TIMER1_COMPA_vect)
-{
-    global_ticks++;
-}
-
 
 /*
  * simple circular buffer for holding keypresses until they can be transmitted
@@ -128,7 +269,7 @@ typedef struct eeprom_layout
     uint8_t         key_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];             /* slow key map */
     uint8_t         key_map2[ MAX_KEY_ROWS][ MAX_KEY_COLS ];            /* fast key map */ 
     uint8_t         mouse_map[ MAX_KEY_ROWS][ MAX_KEY_COLS ];           /* mouse map */
-    uint8_t         button_map[TOTAL_BUTTONS][ MAX_KEY_COLS ];          /* button map */
+    uint8_t         button_map[TOTAL_BUTTONS];                          /* radial encoder and misc buttons */
     uint16_t        key_seq[ MAX_KEY_SEQ ][ MAX_KEYS_PER_SEQ ];         /* key sequences */
 }eeprom_layout_t;
 
@@ -136,66 +277,6 @@ typedef struct eeprom_layout
 #define EEPROM_KEY_MAP ((eeprom_layout_t *)NULL)->key_map
 #define EEPROM_KEY_SEQ ((eeprom_layout_t *)NULL)->key_seq
 
-/*
- * This is the factory defaul settting for key mappings. If you flash eeprom will get
- * written to this value, or you can set the version ( eeprom location 0 ) to 0xff and
- * eeprom will get factory rest on the next power up. This happens when the device
- * is programmed as well.
- *
- */
-
-
-/*
-   functionally we want this for all 3 maps
-
-
-   ---------------------------------------------------
-    toggle      |   up      | anchor    |routstart
-   ---------------------------------------------------
-    left        |markboat   | right     |routend 
-   ---------------------------------------------------
-    zim         | down      | zout      |routenext 
-   ---------------------------------------------------
-    daynight    |track      |follow     |drop cursor
-   ---------------------------------------------------
-
-  flow key set maps like this:
-  
-   ---------------------------------------------------
-   |INT        | alt+up    | A         |crrl+r 
-   ---------------------------------------------------
-   |alt+lt     | ctrl+o    | alt+rt    | esc 
-   ---------------------------------------------------
-   |alt+ +     | alt+down  | alt + -   | ctrl+n
-   ---------------------------------------------------
-   | f5        |  ?        | F2        | ctrl+m     
-   ---------------------------------------------------
-
-  fast key set maps like this:
-
-
-   ---------------------------------------------------
-   |INT         | up        | A         |  ctrl+r 
-   ---------------------------------------------------
-   |lt          | ctrl+o    | rt        | esc  
-   ---------------------------------------------------
-   |  +         | down      | -         | ctrl+n  
-   ---------------------------------------------------
-   | f5         |  ?        |F2         | ctrl+m     
-   ---------------------------------------------------
-
-mouse map is like this:
-
-   ---------------------------------------------------
-   |INT         | mouse up  | A         | ctrl_r
-   ---------------------------------------------------
-   |mouseleft   | ctrl+o    |mousert    | esc 
-   ---------------------------------------------------
-   |  alt+ +    | mouse down| alt + -   | ctrl+n 
-   ---------------------------------------------------
-   | f5          ?          | f2        | ctrl_+m
-   ---------------------------------------------------
-*/
 
  
 eeprom_layout_t global_config={
@@ -228,9 +309,7 @@ eeprom_layout_t global_config={
     },             
 
 /* map misc buttons and the radial encoder to different functions */
-    {
-        { 8, 10, 0, 2 } 
-    },
+    { 10, 8, 0, 2 },
  
     /* key sequences */
 
@@ -264,6 +343,17 @@ eeprom_layout_t global_config={
 		{ HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE<<8, 0, 0, 0 },                                   /* zoom out fast */
     }
 };
+
+/* 
+ * this is our timer interrupt service routine. This is a real interrupt service routine, so
+ * don't try and do much in here. global_ticks is milliseconds since power on
+ */
+
+ISR (TIMER1_COMPA_vect)
+{
+    global_ticks++;
+}
+
 
 
 void cmd_help( FILE *fp, char *str )
@@ -382,6 +472,21 @@ void reset_factory_default(void)
     dbgprint("reset to factory default\n");
     eeprom_write_block( (void *)&global_config, NULL, sizeof( global_config ) );
 }
+
+void set_leds( uint8_t leds )
+{
+    uint8_t i;
+#define FIRST_LED_BIT  4        /* this is ugly */
+#define LED( e, bit, dir, port )                    \
+    if ( leds & (1 << (bit-FIRST_LED_BIT)) )\
+        port |= 1<<bit;    \
+    else \
+        port &= ~(1<<bit);
+LED_LIST
+#undef LED
+
+}
+
 void run_internal_cmd( uint16_t cmd )
 {
     switch(cmd)
@@ -390,6 +495,7 @@ void run_internal_cmd( uint16_t cmd )
             global_mouse_mode = ( global_mouse_mode < MOUSE_MODE ) ? global_mouse_mode+1 : KEY_SLOW_MODE;
             global_mouse_dir = 0;
             dbgprint( "mouse mode %d\n", global_mouse_mode );
+            set_leds( global_mouse_mode+1 );
             break;
         default:
             dbgprint("unkown cmd %d\n", cmd );
@@ -451,16 +557,41 @@ void handle_mouseseq( uint8_t event, uint8_t mousedir )
     }
 }
 
+void handle_buttonseq( uint8_t event, uint8_t number )
+{
+    if ( number & MOUSE_MOVE )
+    {
+        handle_mouseseq( event, number );
+    }
+    else
+    {
+        if ( event == EVENT_KEY_DOWN )
+        {
+            uint8_t seq = global_config.button_map[number];
+            if ( global_config.key_seq[seq][0] == INT_CMD )                
+                run_internal_cmd( global_config.key_seq[seq][1] );
+            else
+            {
+                dbgprint("pressed key %d\n", seq );
+                push_seq(seq);
+            }
+        }
+    }
+}                   
+
+
 void run_event(uint8_t event_type, uint16_t event_number )
 {
-    static uint8_t last_zoom_dir=0;
+    static uint8_t last_event_number = 0xff;
+    static uint8_t last_event_type = 0xff;
+
     switch( event_type )
     {
         case EVENT_KEYPAD_UP:
         {
             uint8_t row = (uint8_t)((0xff00 & event_number) >> 8);
             uint8_t col = (uint8_t)(0x00ff & event_number);
-            dbgprint("keypad down\n");
+            dbgprint("keypad up\n");
             if ( global_mouse_mode == KEY_SLOW_MODE )
             {
                 uint8_t seq = global_config.key_map[row][col];
@@ -501,16 +632,44 @@ void run_event(uint8_t event_type, uint16_t event_number )
         }
         break;
         case EVENT_KEY_UP:
+        {
             if ( (event_number == B_Z_IN) || (event_number == B_Z_OUT) )
             {
-                dbgprint("z up %d\n", event_number ); 
-                last_zoom_dir = 0xff;
+                dbgprint("%d up    \n", event_number );
+                if ( last_event_type == event_type )
+                {
+                    if ( last_event_number != event_number )
+                    {
+                        handle_buttonseq( EVENT_KEY_DOWN, last_event_number );
+                    }
+                } 
+                last_event_number = event_number;
+                last_event_type = event_type;
             }
+        }
         break;
         case EVENT_KEY_DOWN:
-            dbgprint("z down %d\n", event_number ); 
+        {
             if ( (event_number == B_Z_IN) || (event_number == B_Z_OUT) )
             {
+                dbgprint("%d down   \n", event_number );
+                if ( last_event_type == event_type )
+                {
+                    if ( last_event_number != event_number )
+                    {
+                        handle_buttonseq( EVENT_KEY_DOWN, last_event_number );
+                    }
+                }
+                last_event_number = event_number;
+                last_event_type = event_type;
+            }
+            else handle_buttonseq( event_type, event_number );
+        }
+        break;
+/*
+            if ( (event_number == B_Z_IN) || (event_number == B_Z_OUT) )
+            {
+            dbgprint("z up %d     \n", event_number ); 
                 if ( last_zoom_dir == 0xff )
                 {
                     last_zoom_dir = event_number;
@@ -518,14 +677,15 @@ void run_event(uint8_t event_type, uint16_t event_number )
                 else
                 {
                     if ( last_zoom_dir == B_Z_IN )
-                        send_zoom_in();
+                        handle_keyseq( EVENT_KEYPAD_DOWN, global_config.button_map[ B_Z_IN ] );
                     else
-                        send_zoom_out();
+                        handle_keyseq( EVENT_KEYPAD_DOWN, global_config.button_map[ B_Z_OUT ] );
                 }
             }
             else if ( event_number == B_TOGGLE ) 
             {
             }
+*/
         break;
      }
 }
@@ -555,41 +715,6 @@ void start_timer(void)
 /* TODO - rewrite this with the global_ticks
 */
 
-#define DEBOUNCE_COUNT 10
-void poll_buttons(void)
-{
-    static uint16_t button_state[TOTAL_BUTTONS]={0};
-    
-    #define BUTTON( e, ddr, num, pin ) \
-    if ( (button_state[num] & 0x00ff) != (pin & (1<<num)) )\
-    {\
-        button_state[num] = 0x0000 | (uint16_t)(pin & (1<<num));\
-    }    \
-    else\
-    {\
-        if ( !(button_state[num] & 0xff00 )  )\
-        {\
-            button_state[num] |= 0x0100;\
-            uint8_t event = (pin & (1<<num))? EVENT_KEY_UP : EVENT_KEY_DOWN;\
-            run_event( event, num );\
-        }\
-    }\
-
-    BUTTON_LIST
-
-    #undef BUTTON
-}
-
-void send_zoom_in( void )
-{
-    dbgprint("zoom in\n");
-}
-
-
-void send_zoom_out( void )
-{
-    dbgprint("zoom out\n");
-}
 
 
 /*
@@ -677,6 +802,47 @@ void init_eeprom(void)
     }
 }
 
+
+#define DEBOUNCE_COUNT 10
+void poll_buttons(void)
+{
+    static uint32_t last = 0;
+    static uint8_t  button_value[TOTAL_BUTTONS]={0};
+    static uint8_t  button_active[TOTAL_BUTTONS]={0};
+    uint8_t tmp;
+    if ( last == global_ticks ) return;
+    last = global_ticks;
+
+    #define BUTTON( num, bit, ddr, pin ) \
+    tmp = (pin & (1<<bit)); \
+    if ( !button_active[num] )\
+    {\
+        button_active[num] = 1;\
+        button_value[num] = tmp;\
+    }\
+    else\
+    {\
+        if (( button_value[num] == tmp ) && ( button_active[num] == 1 ))\
+        {\
+            button_active[num]=2; \
+            uint8_t event = (tmp)?EVENT_KEY_UP:EVENT_KEY_DOWN;\
+            run_event( event, (uint16_t)num ); \
+        }\
+        else\
+        {\
+            if ( tmp != button_value[num] )\
+            {\
+                button_active[num] = 0;\
+            }\
+        }\
+    }\
+
+    BUTTON_LIST
+    #undef BUTTON
+}
+
+
+
 int main(void)
 {
 
@@ -688,7 +854,6 @@ int main(void)
     init_eeprom();
 	fillScreen(Color565(0,0,0));
 	setTextColor(Color565(255,255,255),Color565(00,00,00));
-    dbgprint("hello world"); 
     FILE stream;
     FILE *fp = &stream;
     CDC_Device_CreateStream(&VirtualSerial_CDC_Interface, &stream);
@@ -697,13 +862,21 @@ int main(void)
     static char serial_input[MAX_LINE_SIZE+1];
     static uint16_t ix=0;
         
+    #define BUTTON(e,bit,dd,pin) dd &= ~(1<<bit);        /* set all button pins to input */
+    BUTTON_LIST 
+    #undef BUTTON
+
+    #define LED(e,bit,dd,port) dd |= (1<<bit); port &= ~(1<<bit); /* set all LEDs to output */
+    LED_LIST
+    #undef LED
+    set_leds( global_mouse_mode+1);
 
     fprintf(fp, "Navputter starting Cap'n\n\r");
-    uint32_t start = global_ticks;
 	for (;;)
 	{
         lufa_main_loop();
         read_keypad();
+        
         poll_buttons();
         char c=0;
   /* Must throw away unused bytes from the host, or it will lock up while waiting for the device */
