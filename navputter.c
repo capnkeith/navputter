@@ -299,13 +299,13 @@ uint16_t pop_key(void)
 
 
 
-#define USAGE_LIST\
-    USAGE( "------------------------------------------------------------------------------)\
+#define USAGE_LIST \
+    USAGE( "------------------------------------------------------------------------------")\
     USAGE( "Navputter eeprom interface Cap'n.")\
     USAGE( "Key maps should specify either a key sequence number, or a mouse direction:")\
     USAGE( "U,D,L,R,l,r which stands for UP, DOWN, LEFT, RIGHT, LEFT CLICK, RIGHT CLICK. " )\
-    USAGE( "Key sequences must be specified numerically, see keycodes.txt for key values.");\
-    USAGE( "------------------------------------------------------------------------------)\
+    USAGE( "Key sequences must be specified numerically, see keycodes.txt for key values.")\
+    USAGE( "------------------------------------------------------------------------------")\
     USAGE( "Command list:")\
 
 
@@ -575,10 +575,11 @@ void cmd_seq( FILE *fp, char *str )
 {
     char *c = strchr( str, ' ' );
     if ( !c ) goto ERROR;
-    uint8_t key_id = atoi( c+1 );
-    c = strchr( c+1, ' ' );
+    while( *c == ' ' ) c++;
+        fprintf(fp, "#a c=%c\nr", *c );
+    uint8_t key_id = atoi( c );
+    c = strchr( c, ' ' );
     if ( !c ) goto ERROR;
-
     
     uint8_t i;
     uint16_t key;
@@ -588,20 +589,20 @@ void cmd_seq( FILE *fp, char *str )
         while( *c == ' ' ) c++;
 
         if ( (*(c) == '0') && (tolower(*(c+1)) == 'x') )
-            sscanf( c, "%x", &key );
+            sscanf( c+2, "%x", &key );
         else
             key = atoi(c);
-        c = strchr( c+1, ' ' );
+        c = strchr( c, ' ' );
         if ( !c ) goto ERROR;
         while( *c == ' ' ) c++;
         if ( (*(c) == '0') && (tolower(*(c+1)) == 'x') )
-            sscanf( c, "%x", &mod );
+            sscanf( c+2, "%x", &mod );
         else 
             mod = atoi(c);
-        fprintf(fp, "key=%d, mod=%d\n\r", key, mod );
         global_config.key_seq[ key_id ][ i  ] = (key << 8) | mod;
         c = strchr( c, ',' );
         if ( !c ) break;
+        c++;
     }
     fprintf( fp, "sequence %d set successfully\n\r", key_id);
     return;
