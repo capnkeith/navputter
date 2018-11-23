@@ -15,7 +15,7 @@
 
 Navputter is firmware that works with USB compatible micro controllers plugged into  Windows, Mac, and Linux without additional drivers. Pug in the USB and it works as a mouse, a keyboare, and a serial device. The serial can be used to parse nmea sentences and drive custom digital i/o or to program the eeprom keymappings. Tis project is just an easy shell to implement simple opencpn hardware idea.
 
-###Hardware
+### Hardware
 Hardware: this project is currently set up for specific hardware. For easiest results start with identical harware. The only required hardware is a USB compatibe uC and enbough free pins to support the keypad or buttons. Currenty I have: 
 
    uC: Teensy++ 2.0. This is a at90usb1286.
@@ -24,7 +24,7 @@ Hardware: this project is currently set up for specific hardware. For easiest re
    simple push buttons (2)
    LEDs (2)
   
-###port mappings:
+### port mappings:
  
     Navputter currently has a 4x4 keypad ( PORTF ), 
     An uTFT_ST7735 display ( PORTC 0-3 )
@@ -52,7 +52,7 @@ To use the command interface connect to the virtual serial device with a terimin
     'l' - mouse left click
     'r' - mouse right click
 
-####The following siple serial commands are supported:
+#### The following siple serial commands are supported:
 
   help  - show some help
   dump  - dump out all the eeprom data
@@ -108,7 +108,7 @@ Now program your AVR
     make avrdude
  
  
-####Debugging:
+#### Debugging:
 
 if DEBUG is defined you can use the dbgprint which is printf for the lcd, or your can fprintf( gfp, ... ) to write out th serial adapter if you are debugging nmea you will be glad for the lcd. 
  
