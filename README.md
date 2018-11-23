@@ -1,6 +1,6 @@
 
-#Navputter
-##### Firmware for a USB keymouse + virtual serial nmea. breakout designed for OpenCPN.
+# Navputter
+#### Firmware for a USB keymouse + virtual serial nmea. breakout designed for OpenCPN.
 
 
 
