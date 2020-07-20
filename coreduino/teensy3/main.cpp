@@ -48,6 +48,17 @@ uint32_t global_ticks=0;
 
 void event( int event, int p1, int p2 );
 
+enum mouse_directions
+{
+    NP_MOUSE_UP=0,
+    NP_MOUSE_DOWN,
+    NP_MOUSE_LEFT,
+    NP_MOUSE_RIGHT,
+    NP_TOTAL_MOUSE_DIRS
+};
+
+
+
 enum events             /* main event type for do_event() */
 {
     EVENT_KEYPAD_UP=0,
@@ -86,7 +97,10 @@ typedef struct eeprom_header
     uint8_t version;
     uint8_t rows;
     uint8_t cols;
-    uint8_t unused;
+    uint8_t flip_rows;
+    uint8_t flip_cols;
+    uint8_t mouse_step;
+    uint16_t unused2; 
 }eeprom_header_t;
 
 typedef struct key_map
@@ -104,6 +118,7 @@ typedef struct eeprom_layout
     uint8_t         last_keystate[ MAX_KEY_COLS ];
     uint8_t         keypress[MAX_KEY_ROWS][ MAX_KEY_COLS ];
     key_map_t       cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+    uint8_t         mouse_moves[NP_TOTAL_MOUSE_DIRS];
 }eeprom_layout_t;
 
 
@@ -116,23 +131,37 @@ enum key_actions
 {
     KA_NO_ACTION  = 0,       /* do nothing on keypress      */
     KA_KEY_ACTION,           /* inject a keystroke          */
-    KA_MOUSE_ACTION,         /* mouse mouse or press        */
+    KA_MOUSE_UP,             /* move mouse up               */
+    KA_MOUSE_DOWN,           /* move mouse down             */
+    KA_MOUSE_LEFT,           /* move mouse left             */
+    KA_MOUSE_RIGHT,          /* move mouse right            */
     KA_REPORT_KEY,           /* show key pressed on serial  */
 };
 
 
 key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
-        {{KA_REPORT_KEY,'d'}, {KA_REPORT_KEY,'#'}, {KA_REPORT_KEY,'0'}, {KA_REPORT_KEY, '*'}},
-        {{KA_REPORT_KEY,'c'}, {KA_REPORT_KEY,'9'}, {KA_REPORT_KEY,'8'}, {KA_REPORT_KEY, '7'}},
-        {{KA_REPORT_KEY,'b'}, {KA_REPORT_KEY,'6'}, {KA_REPORT_KEY,'5'}, {KA_REPORT_KEY, '4'}},
-        {{KA_REPORT_KEY,'a'}, {KA_REPORT_KEY,'3'}, {KA_REPORT_KEY,'2'}, {KA_REPORT_KEY, '1'}},
+        {{KA_REPORT_KEY,'1'}, {KA_REPORT_KEY,'2'}, {KA_REPORT_KEY,'3'}, {KA_REPORT_KEY, 'A'}},
+        {{KA_REPORT_KEY,'4'}, {KA_REPORT_KEY,'5'}, {KA_REPORT_KEY,'6'}, {KA_REPORT_KEY, 'B'}},
+        {{KA_REPORT_KEY,'7'}, {KA_REPORT_KEY,'8'}, {KA_REPORT_KEY,'9'}, {KA_REPORT_KEY, 'C'}},
+        {{KA_REPORT_KEY,'*'}, {KA_REPORT_KEY,'0'}, {KA_REPORT_KEY,'#'}, {KA_REPORT_KEY, 'D'}},
 };
 
+key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
+{
+        {{KA_REPORT_KEY,'1'}, {KA_MOUSE_UP,'2'}, {KA_REPORT_KEY,'3'}, {KA_REPORT_KEY, 'A'}},
+        {{KA_MOUSE_LEFT,'4'}, {KA_REPORT_KEY,'5'}, {KA_MOUSE_RIGHT,'6'}, {KA_REPORT_KEY, 'B'}},
+        {{KA_REPORT_KEY,'7'}, {KA_MOUSE_DOWN,'8'}, {KA_REPORT_KEY,'9'}, {KA_REPORT_KEY, 'C'}},
+        {{KA_REPORT_KEY,'*'}, {KA_REPORT_KEY,'0'}, {KA_REPORT_KEY,'#'}, {KA_REPORT_KEY, 'D'}},
+};
+
+
+
 eeprom_layout_t global_config={
-    {1,4,4,0},              /* version 1, 4 rows, 4 cols  */
+    {1,4,4,1,1,1},              /* version 1, 4 rows, 4 cols, flip rows 1, flip cols 1, mouse step 1 */
 
     { INVALID_KEYSTATE},
+    { 0 },
     { 0 },
     { 0 },
     { 0 },
@@ -158,16 +187,29 @@ void tickme(void)
 
 void process_keypad_event( uint8_t event, uint8_t row, uint8_t col )
 {
+    row = (global_config.config.flip_rows)?global_config.config.rows - row - 1:row;
+    col = (global_config.config.flip_cols)?global_config.config.cols - col - 1:col;
     uint8_t action = global_config.cur_map[row][col].action;
-
+    dbgprint("# row=%d, col=%d, action=%d\n", row, col, action )
     switch(action)
     {
         case KA_KEY_ACTION:
             break;
-        case KA_MOUSE_ACTION:
+        case KA_MOUSE_LEFT:
+            global_config.mouse_moves[ NP_MOUSE_LEFT ] = ( event == EVENT_KEYPAD_DOWN ) ? global_config.config.mouse_step : 0; 
+            break;
+        case KA_MOUSE_RIGHT:
+            global_config.mouse_moves[ NP_MOUSE_RIGHT ]= ( event == EVENT_KEYPAD_DOWN ) ? global_config.config.mouse_step : 0; 
+            break;
+        case KA_MOUSE_UP:
+            global_config.mouse_moves[ NP_MOUSE_UP ] = ( event == EVENT_KEYPAD_DOWN ) ? global_config.config.mouse_step : 0; 
+            dbgprint("set move moves (up) to %d\n", global_config.mouse_moves[ NP_MOUSE_UP ] );
+            break;
+        case KA_MOUSE_DOWN:
+            global_config.mouse_moves[ NP_MOUSE_DOWN ] = ( event == EVENT_KEYPAD_DOWN ) ? global_config.config.mouse_step : 0; 
             break;
         case KA_REPORT_KEY:
-            dbgprint("# %s : %d,%d = %c\n\r", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, global_config.cur_map[row][col].p1 );
+            dbgprint("# report %s : %d,%d = %c\n\r", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, global_config.cur_map[row][col].p1 );
             break;
         default:
             dbgprint("ERROR: unknown event %d in process_keypad_event() %s %d\n", event, __FILE__, __LINE__ );
@@ -183,7 +225,6 @@ void trigger_keypad()
 {
     if ( global_config.last_keystate[0] == INVALID_KEYSTATE )
     {
-        dbgprint("# first trigger, init keystate\n");
         memcpy( global_config.last_keystate, global_config.keystate, global_config.config.cols );
         return;
     }
@@ -195,7 +236,6 @@ void trigger_keypad()
         {
             if ( global_config.keystate[col] != global_config.last_keystate[col] )
             {
-                dbgprint("# differs on col %d %d != %d\r\n", col, global_config.keystate[col], global_config.last_keystate[col] );
 				for ( row=0; row< global_config.config.rows; row++ )
 				{
 					if ( global_config.keystate[col] & (1<<row) )
@@ -282,7 +322,7 @@ void key_down_event( int row, int col )
       
 void init_keys(void)
 {
-    memcpy( global_config.cur_map, temp_map, sizeof( temp_map ));
+    memcpy( global_config.cur_map, base_map, sizeof( temp_map ));
 }
 
 
@@ -323,6 +363,15 @@ void serial_init(void)
 #undef _BW_
 }
 
+void process_mouse( void )
+{
+
+    mymouse.move( 
+        global_config.mouse_moves[ NP_MOUSE_RIGHT] - global_config.mouse_moves[ NP_MOUSE_LEFT],
+        global_config.mouse_moves[ NP_MOUSE_DOWN ] -  global_config.mouse_moves[ NP_MOUSE_UP ], 0, 0
+    );
+}
+
 
 
 #define ONE_SECOND 1000
@@ -353,6 +402,7 @@ extern "C" int main(void)
                 {
                         last_tick = global_ticks;
                         readkeypad();   
+                        process_mouse();
                 }
                 if ( global_ticks - last_flash > ONE_SECOND )
                 {
