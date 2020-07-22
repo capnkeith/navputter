@@ -47,6 +47,9 @@ IntervalTimer mytimer;
 volatile uint32_t global_ticks=0;
 
 void event( int event, int p1, int p2 );
+void process_mouse( void );
+char serial_read_gpio_port(void);
+void serial_read_gpio(void);
 
 enum mouse_directions
 {
@@ -491,6 +494,90 @@ _EEPROM_DESC_
 }
 
 
+char serial_read_gpio_port(void)
+{
+    while(1)
+    {
+        uint8_t c = myser.read();
+        if (c==0xff) continue;
+        c = tolower(c);
+        if ((c >='a') && ( c <= 'd')) return c;
+        return 0;
+    }
+}
+
+int hextoint( char *buf )
+{
+    int v=0;
+    char c;
+    while(*buf)
+    {
+        if ( v ) v=v<<4;
+        if ( isdigit( *buf ) )
+        {
+            v |= (*buf - '0');
+        }
+        else if ( (*buf == 'x') || (*buf == 'X') )
+        {
+        }
+        else  
+        {
+            c = tolower( *buf );
+            v |= (c - 'a' + 0x10);
+        }
+        buf++;
+    }
+    dbgprint("hex %s is %x\n", buf, v );
+    return v;
+}
+
+
+int serial_read_hex_int(int min, int max, uint8_t *err)
+{
+    *err = 1;
+#define MAX_INT_SIZE 25
+    char buf[MAX_INT_SIZE];
+    uint8_t i = 0; 
+    while(1)
+    {
+        uint8_t c = myser.read();
+        if ( c==0xff ) continue;
+        if ( ((c >= '0') && (c <= '9')) || ((c>= 'a') && (c <='f')) || ((c>='A') && (c <= 'F')))
+        {
+            buf[i++]=c;
+            myser.write(c);
+            if ( i>=MAX_INT_SIZE )
+            {
+                dbgprint("size error\n");
+                return 0;
+            } 
+        }   
+        else if (( c== '\n' ) || (c == '\r'))
+        {
+            buf[i]=0;
+            int v = hextoint(buf);
+            if (( v < min ) || ( v > max) )
+            {
+                dbgprint("ERROR: range error. Must be between %x and %x\n", min, max);
+                return 0;
+            }
+            else
+            {
+                *err = 0;
+                dbgprint("read hex value %x\n", v );
+                return v;
+            }
+        }
+        else
+        {
+            dbgprint("ERROR: not a number. 0 %d is 1 is %d\n\r", '0', '1');
+            return 0;
+        }                                
+    }
+    return 0;
+} 
+
+
 int serial_read_int(int min, int max, uint8_t *err)
 {
     *err = 1;
@@ -638,13 +725,169 @@ void handle_eeprom(void)
 
 void serial_keypad(void)
 {
-    dbgprint("# serial keypad\n");
+    dbgprint("# Serial keypad.  \n");
+    while(1)
+    {
+        char v = myser.read();
+        if ( v == 0xff ) continue;
+        uint8_t r;
+        uint8_t c;
+        uint8_t row, col;
+        for ( r=0; r< global_config.config.rows; r++ )
+        {
+            for ( c=0; c< global_config.config.cols; c++ )
+            {
+                row = (global_config.config.flip_rows)?global_config.config.rows - r - 1:r;
+                col = (global_config.config.flip_cols)?global_config.config.cols - c - 1:c;
+                if ( global_config.cur_map[r][c].p1 == v )
+                {
+                    process_keypad_event( EVENT_KEYPAD_DOWN, row, col );
+                    process_mouse();
+                    process_keypad_event( EVENT_KEYPAD_UP, row,col );
+                    goto NEXT_PRESS;
+                }
+            }
+        }
+NEXT_PRESS:
+        if ( v == 'q' ) return;
+    }
+}
+
+void serial_read_gpio(void)
+{
+    while(1)
+    {
+        uint8_t port = serial_read_gpio_port();
+        if ( port == 0 ) 
+        {
+            dbgprint("ERROR: gpio read format incorrect. Use R<port>. Port a-d, case insenstive.\r\n");
+            return;
+        }   
+        uint8_t v=0;
+        switch( port )
+        {
+//            case 'a' : v = PINA;
+            case 'a' : v = 0;
+                dbgprint("PINA not working on teensy3.2...\n");
+                break;
+            case 'b' : v = PINB;
+                break;
+            case 'c' : v = PINC;
+                break;
+            case 'd' : v = PIND; 
+                break;
+            default:
+                dbgprint("insane in membrane %s %d\n", __FILE__, __LINE__ );
+                break;
+        }
+        return;
+    }
+}
+
+void serial_set_data_direction(void)
+{
+    uint8_t port = serial_read_gpio_port();
+    if ( port == 0 )
+    {
+        dbgprint("ERROR: gpio data direction format incorrect. Use d<port><value>. i.e. db0f sets port D 0-3 output, 4-7 input\r\n");
+        return;
+    }
+    uint8_t err;
+    int value = serial_read_hex_int( 0x0, 0xff, &err );
+    if ( err )
+    {      
+        dbgprint("ERROR: gpio data direction formt is in hex. d<port><hex value>.\r\n");
+        dbgprint("   example: db02, or db0x02 sets port B bit 2 as an output all the others inputs\n\r");
+        return;
+    }
+    port = tolower(port);
+    switch( port )
+    {
+        case 'a' : /*DDRA = (value&0xff); */ dbgprint("ERROR: no port A on teensy 3.2...\n"); break;
+        case 'b' : DDRB = (value&0xff); break;
+        case 'c' : DDRC = (value&0xff); break;
+        case 'd' : DDRD = (value&0xff); break;
+        default:
+            dbgprint("ERROR: illegal port %c(%d), at %s %d\n", port, port, __FILE__, __LINE__ );
+            break;
+    }
+    dbgprint("PORT%c = %x. OK.\r\n", port, value );
 }
 
 
+
+void serial_write_gpio(void)
+{
+    uint8_t port = serial_read_gpio_port();
+    if ( port == 0 )
+    {
+        dbgprint("ERROR: gpio write format incorrect. Use W<port><value>. i.e. Wb0f sets port D 0b000011111\r\n");
+        return;
+    }
+    uint8_t err;
+    int value = serial_read_hex_int( 0x0, 0xff, &err );
+    if ( err )
+    {      
+        dbgprint("ERROR: gpio write formt is in hex. W<port><hex value>.\r\n");
+        dbgprint("   example: WD02, or WD0x02 writes the low order 2 bits to port D\n\r");
+        return;
+    }
+    port = tolower(port);
+    switch( port )
+    {
+        case 'a' : /*DDRA = (value&0xff); */ dbgprint("ERROR: no port A on teensy 3.2...\n"); break;
+        case 'b' : PORTB = (value&0xff); break;
+        case 'c' : PORTC = (value&0xff); break;
+        case 'd' : PORTD = (value&0xff); break;
+        default:
+            dbgprint("ERROR: illegal port %c(%d), at %s %d\n", port, port, __FILE__, __LINE__ );
+            break;
+    }
+    dbgprint("PORT%c = %x. OK.\r\n", port, value );
+}
+
+void gpio_usage(void)
+{
+    dbgprint("Serial GPIO. Not all bits available on all micro controllers.\n");
+    dbgprint("Use ports: A, B, C, D.\n\r");
+    dbgprint("Commands: \r\n");
+    dbgprint("    R<port>            - read entire port value as 8 bit hex (PIN) \r\n");
+    dbgprint("    W<port><value>     - write 8 bit hex value to port (PORT = value) \r\n");
+//    dbgprint("    r<port><bit>       - read bit from port and position (PIN & 1<<bit)\r\n");
+//    dbgprint("    w<port><bit><val>  - write bit to port and position  (PORT &= ~((1<< bit) & val)\r\n");
+//    dbgprint("    t<port><bit>       - toggle bit at port and position (PORT ^= 1<<bit) \r\n");
+    dbgprint("    D<port><value>     - set all data direction bits of one port at oen time ( DDR = value )\r\n");
+//    dbgprint("    d<port><bit><value>- set a single data direction bit of one port ( DDR &= ~((1<< bit) & value)\r\n");
+    dbgprint("    h                  - this dialog\r\n");
+    dbgprint("    q                  - quit\r\n");
+}
+ 
+
 void serial_gpio(void)
 {
-    dbgprint("# serial gpio\n");
+//    char gpio_cmds[] = "qhtwrWR";
+    char gpio_cmds[] = "qhrw";
+    gpio_usage();
+
+    while(1)
+    {
+        char c = serial_get_command( gpio_cmds );
+        switch(c)
+        {
+            case 'q' : return;
+            case 'h' : gpio_usage(); break;
+//        case 'd' : serial_set_data_direction(); break;
+            case 'r' : serial_read_gpio(); break;
+            case 'w' : serial_write_gpio(); break;
+            default:
+                dbgprint("ERROR: unknown gpio command %c  - %s %d\n", c, __FILE__, __LINE__ );
+                return;
+                break;
+//        case 'r' : serial_read_gpio_bit(); break;
+//       case 'w' : serial_write_gpio_bit(); break;
+ //      case 't' : serial_toggle_gpio_bit(); break;
+        }
+    }
 }
 
 
@@ -655,7 +898,7 @@ void usage(void)
     _SER_CMDS_
 #undef _SC_
    
-    dbgprint("\n\r\r\rPress command letter:\n\r");
+    dbgprint("\n\r\r\rPress command letter:");
 }
  
 
@@ -712,9 +955,6 @@ void process_serial(void )
 
 extern "C" int main(void)
 {
-    uint8_t flash_state=1;
-    uint32_t last_flash=0;
-
     eeprom_init();
     usb_init();
     while( !usb_configuration );
@@ -727,10 +967,10 @@ extern "C" int main(void)
     init_keys();
     serial_init();
 
-    
     mytimer.begin(tickme, 1000 );
     uint32_t last_tick=0;
-    digitalWriteFast(13, flash_state);
+    uint32_t blink_tick=0;
+    uint8_t flag=0;
     while (1) 
     {
         if ( myser.peek()  )
@@ -743,12 +983,14 @@ extern "C" int main(void)
             readkeypad();   
             process_mouse();
         }
-        if ( global_ticks - last_flash > ONE_SECOND )
+#if 0
+        if ( global_ticks - blink_tick >= ONE_SECOND )
         {
-            last_flash = global_ticks;
-            flash_state ^= 1;
-            digitalWriteFast(13, flash_state);
-        }       
+            blink_tick = global_ticks;
+            flag ^= 0x20;
+            PORTB = flag;   
+        }
+#endif
     }
 }
 
