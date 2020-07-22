@@ -101,6 +101,8 @@ enum time_constants
 #define MAX_KEY_ROWS        4
 #define MAX_KEY_COLS        4
 
+#define LINE "--------------------------------------------------------------------------------"
+
 
 
 
@@ -118,7 +120,7 @@ enum time_constants
 //      )
 
 #define _EEPROM_DESC_\
-    _ED_( 'v', version,      uint16_t,    0x0102,        0, 0xff,           "%-8x",    NULL,              "EEPROM version. Change to reset device to factory default." )\
+    _ED_( 'v', version,      uint16_t,    0x0101,        0, 0xff,           "%-8x",    NULL,              "EEPROM version. Change to reset device to factory default." )\
     _ED_( 'r', rows,         uint8_t,     MAX_KEY_ROWS,  1, MAX_KEY_ROWS,   "%-8d",    NULL,              "Number of rows of keys on your keypad." )\
     _ED_( 'c', cols,         uint8_t,     MAX_KEY_COLS,  1, MAX_KEY_COLS,   "%-8d",    NULL,              "Number of columns of keys on your keypad." )\
     _ED_( 'f', flip_rows,    uint8_t,     1,             0, 1,              "%-8d",    NULL,              "Flip keypad rows." )\
@@ -137,6 +139,8 @@ typedef struct eeprom_header
     _EEPROM_DESC_
 }eeprom_header_t;
 #undef _ED_
+
+char *eeprom_start = NULL;
 
 
 #define EEPROM_SIZE 2048    // NOTE: this should come from teensycore ...
@@ -233,14 +237,23 @@ global_state_t global_config={
 void eeprom_init(void)
 {
     eeprom_header_t hdr={0};
-    eeprom_read_block((void *)&hdr, 0, sizeof( hdr ));
+    eeprom_header_t hdr_default ={0};
+    eeprom_initialize();
+    
+    while( !eeprom_is_ready() );
+    eeprom_read_block((void *)&hdr, eeprom_start, sizeof( hdr ));
+#define _ED_( c, _field_, t, _default_, m, mx, fmt, fnunc, str ) hdr_default._field_ = _default_;
+    _EEPROM_DESC_
+#undef _ED_    
 
-    if ( hdr.version != global_config.config.version )
+    if ( hdr_default.version != hdr.version )
     {
-#define _ED_( c, _field_, t, _default_, m, mx, fmt, fnunc, str ) global_config.config._field_ = _default_;
-        _EEPROM_DESC_
-#undef _ED_       
-        eeprom_write_block((void *)&global_config.config, 0, sizeof(global_config.config));
+        memcpy( (void *)&global_config.config, (void *)&hdr_default, sizeof( hdr_default ) );
+        eeprom_write_block((void *)&global_config.config, eeprom_start, sizeof(global_config.config));
+    }
+    else
+    {
+        memcpy( (void *)&global_config.config, (void *)&hdr, sizeof( hdr_default ) );
     }
 }
 
@@ -270,7 +283,6 @@ void process_keypad_event( uint8_t event, uint8_t row, uint8_t col )
     row = (global_config.config.flip_rows)?global_config.config.rows - row - 1:row;
     col = (global_config.config.flip_cols)?global_config.config.cols - col - 1:col;
     uint8_t action = global_config.cur_map[row][col].action;
-    dbgprint("# row=%d, col=%d, action=%d\r\n", row, col, action )
     switch(action)
     {
         case KA_KEY_ACTION:
@@ -451,14 +463,13 @@ void init_keys(void)
 
  
 
-void handle_eeprom(void)
+void print_eeprom(void)
 {
-    char separator_line[] = "--------------------------------------------------------------------------------";
-    dbgprint("\n\r\n\r%s\n\r", separator_line );
-    dbgprint("EEPROM Menu. Please be careful.\r\n");
-    dbgprint("%s\n\r", separator_line );
+    dbgprint("\n\r\n\r%s\n\r", LINE );
+    dbgprint("EEPROM Menu. Please be careful. Select field to change or reset.\r\n");
+    dbgprint("%s\n\r", LINE );
     dbgprint("CMD %-12s%-8s%-8s%-8s%-8s%s\r\n", "field",  "default",  "current",  "min",  "max", "description");
-    dbgprint("%s\n\r", separator_line );
+    dbgprint("%s\n\r", LINE );
 #define _ED_( cmd, _field_, type, _default_, _min_, _max_, _format_, func, _help_ ) \
     dbgprint("%c)  %-12s"\
         _format_    /* print current value */ \
@@ -474,8 +485,156 @@ void handle_eeprom(void)
     );
 _EEPROM_DESC_
 #undef _ED_
+    dbgprint("w)  write.\r\n\r\n");
+    dbgprint("q)  quit.\r\n\r\n");
     dbgprint("CMD (be careful):");
 }
+
+
+int serial_read_int(int min, int max, uint8_t *err)
+{
+    *err = 1;
+#define MAX_INT_SIZE 25
+    char buf[MAX_INT_SIZE];
+    uint8_t i = 0; 
+    dbgprint("Enter a value between %d and %d:", min, max);
+    while(1)
+    {
+        uint8_t c = myser.read();
+        if ( c==0xff ) continue;
+        if ( (c >= '0') && (c <= '9') )
+        {
+            buf[i++]=c;
+            myser.write(c);
+            if ( i>=MAX_INT_SIZE )
+            {
+                dbgprint("number too long.\n\r");
+                return 0;
+            } 
+        }   
+        else if (( c== '\n' ) || (c == '\r'))
+        {
+            buf[i]=0;
+            int v = atoi(buf);
+            if (( v < min ) || ( v > max) )
+            {
+                dbgprint("\n\rRange error.\n\rEnter a number between %d and %d:", min, max );
+                i=0;
+            }
+            else
+            {
+                *err = 0;
+                return v;
+            }
+        }
+        else
+        {
+            dbgprint("not a number. 0 %d is 1 is %d\n\r", '0', '1');
+            return 0;
+        }                                
+    }
+    return 0;
+} 
+
+int serial_get_command( char *str )
+{
+    while(1)
+    {
+        uint8_t c = myser.read();
+        char *ptr;
+        if ( c == 0xff ) continue;
+        for ( ptr=str; *ptr !=0; ptr++ ) 
+        {
+            if ( *ptr == c ) 
+            {
+                return c;
+            }
+        }
+    }
+} 
+
+void write_eeprom(void)
+{
+    eeprom_write_block((void *)&global_config.config, eeprom_start, sizeof(global_config.config));
+    dbgprint("EEPROM saved.\r\n");
+}
+
+void handle_eeprom(void)
+{
+    char cmd_str[] = "19q";
+    while(1)
+    {
+        int dirty=0;
+        uint8_t c;
+        print_eeprom();
+        while(1)
+        {
+            c = myser.read();
+            if (c == 0xff) continue;
+#define _ED_( _cmd_, _field_, t, _default_, _min_, _max_, _ft_, _func_, h ) \
+            if ( c == _cmd_ )\
+            {\
+                dbgprint("\n\r\n\rModify Paramter: \"%s\"?\n\r", #_field_ );\
+                dbgprint("    1) Change\r\n");\
+                dbgprint("    9) Reset\r\n" );\
+                dbgprint("    q) Quit\r\n" );\
+                char command_char = serial_get_command(cmd_str);\
+                if ( command_char == '1' ) \
+                {\
+                    uint8_t err;\
+                    int v  = serial_read_int(_min_,_max_,&err);\
+                    if ( !err )\
+                    {\
+                        dirty=1;\
+                        global_config.config._field_ = v;\
+                    }\
+                }\
+                else if ( command_char == '9' )\
+                {\
+                    dirty=1;\
+                    global_config.config._field_ = _default_;\
+                    dbgprint("Value reset.\r\n");\
+                    break;\
+                } \
+                else if ( command_char == 'q' )\
+                {\
+                    print_eeprom();\
+                } \
+                else\
+                {\
+                    dbgprint("What? Please 1, 9, or q\r\n");\
+                } \
+            }
+            _EEPROM_DESC_
+#undef _ED_
+
+            if ( c == 'q' )
+            {
+                if ( dirty )
+                {
+                    while(1)
+                    {
+                        char yes_no[]="yn";
+                        dbgprint("EEPROM has changed. Abandon change? (y/n)\n\r" );
+                
+                        char c = serial_get_command( yes_no ); 
+                        if ( c == 'y' ) return;
+                        if ( c == 'n' ) break; 
+                    }
+                }
+            }
+            else if ( c== 'w' )
+            {
+                write_eeprom();
+                return;
+            }
+            print_eeprom();
+        }
+    }   
+}
+         
+
+
 
 void serial_keypad(void)
 {
@@ -491,12 +650,12 @@ void serial_gpio(void)
 
 void usage(void)
 {
-    dbgprint("Commands:\r\n");
+    dbgprint("Main Menu Commands:\r\n");
 #define _SC_( cmd, str, func ) dbgprint(" %c) - %s\n\r", (int)cmd, str );
     _SER_CMDS_
 #undef _SC_
    
-    dbgprint("\n\r\r\rpress command letter:\n\r");
+    dbgprint("\n\r\r\rPress command letter:\n\r");
 }
  
 
@@ -524,7 +683,6 @@ void serial_init(void)
 
 void process_mouse( void )
 {
-
     mymouse.move( 
         global_config.mouse_moves[ NP_MOUSE_RIGHT] - global_config.mouse_moves[ NP_MOUSE_LEFT],
         global_config.mouse_moves[ NP_MOUSE_DOWN ] -  global_config.mouse_moves[ NP_MOUSE_UP ], 0, 0
@@ -542,9 +700,10 @@ void process_serial(void )
         }
         else
         {
-#define _SC_( c, str, func ) if ( (c) == (byte) ) return func();
-    _SER_CMDS_
+#define _SC_( c, str, func ) if ( (c) == (byte) ) func();
+            _SER_CMDS_
 #undef _SC_
+            usage();
         }
     }
 }
@@ -556,6 +715,7 @@ extern "C" int main(void)
     uint8_t flash_state=1;
     uint32_t last_flash=0;
 
+    eeprom_init();
     usb_init();
     while( !usb_configuration );
 
@@ -567,10 +727,10 @@ extern "C" int main(void)
     init_keys();
     serial_init();
 
+    
     mytimer.begin(tickme, 1000 );
     uint32_t last_tick=0;
     digitalWriteFast(13, flash_state);
-    eeprom_init();
     while (1) 
     {
         if ( myser.peek()  )
