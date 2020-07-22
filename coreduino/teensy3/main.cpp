@@ -236,7 +236,7 @@ key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
         {{KA_KEY_ACTION,'+'}, {KA_MOUSE_UP,'2'}, {KA_KEY_ACTION,'-'}, {KA_REPORT_KEY, 'A'}},
-        {{KA_MOUSE_LEFT,'4'}, {KA_MOUSE_STEP}, {KA_MOUSE_RIGHT,'6'}, {KA_REPORT_KEY, 'B'}},
+        {{KA_MOUSE_LEFT,'4'}, {KA_MOUSE_STEP, '5'}, {KA_MOUSE_RIGHT,'6'}, {KA_REPORT_KEY, 'B'}},
         {{KA_REPORT_KEY,'7'}, {KA_MOUSE_DOWN,'8'}, {KA_REPORT_KEY,'9'}, {KA_REPORT_KEY, 'C'}},
         {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'}, {KA_MOUSE_RT_CLICK,'#'}, {KA_REPORT_KEY, 'D'}},
 };
@@ -315,6 +315,8 @@ void process_keypad_event( uint8_t event, uint8_t row, uint8_t col )
 {
     row = (global_config.config.flip_rows)?global_config.config.rows - row - 1:row;
     col = (global_config.config.flip_cols)?global_config.config.cols - col - 1:col;
+
+    dbgprint("pressed key %d, %d, char %c\n", row, col, global_config.cur_map[row][col].p1 );
     uint8_t action = global_config.cur_map[row][col].action;
     switch(action)
     {
@@ -594,7 +596,6 @@ int serial_read_hex_int(int min, int max, uint8_t *err)
             else
             {
                 *err = 0;
-                dbgprint("read hex value %x\n", v );
                 return v;
             }
         }
@@ -760,20 +761,22 @@ void serial_keypad(void)
     {
         char v = myser.read();
         if ( v == 0xff ) continue;
+        uint8_t row;
+        uint8_t col;
         uint8_t r;
         uint8_t c;
-        uint8_t row, col;
+        dbgprint("# I read in %c\n", v );
         for ( r=0; r< global_config.config.rows; r++ )
         {
             for ( c=0; c< global_config.config.cols; c++ )
             {
                 row = (global_config.config.flip_rows)?global_config.config.rows - r - 1:r;
-                col = (global_config.config.flip_cols)?global_config.config.cols - c - 1:c;
-                if ( global_config.cur_map[r][c].p1 == v )
+                col = (global_config.config.flip_cols)?global_config.config.cols - c- 1:c;
+                if ( global_config.cur_map[row][col].p1 == v )
                 {
-                    process_keypad_event( EVENT_KEYPAD_DOWN, row, col );
+                    process_keypad_event( EVENT_KEYPAD_DOWN, r, c );
                     process_mouse();
-                    process_keypad_event( EVENT_KEYPAD_UP, row,col );
+                    process_keypad_event( EVENT_KEYPAD_UP, r,c );
                     goto NEXT_PRESS;
                 }
             }
@@ -945,15 +948,11 @@ void serial_init(void)
         tick_watchdog();
         blink ^= 1;
     }
-    myser.clear();
-    myser.flush();
-
 #define _BW_(str) dbgprint( str"\r\n" );
     _BIG_WHALE_
 #undef _BW_
     dbgprint("\n");
     usage();
-    myser.flush();
 }
 
 void process_mouse( void )
