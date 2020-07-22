@@ -1,0 +1,4 @@
+interrupt_weak_isr.h:17:13:isr_panic_alias	0	static
+interrupt_weak_isr.h:21:13:isr_ignore_alias	0	static
+startup.c:16:13:watchdog_hook_default	0	static
+startup.c:193:6:__startup	8	static

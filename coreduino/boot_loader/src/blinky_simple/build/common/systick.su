@@ -1,0 +1,2 @@
+systick.c:9:6:systick_init	0	static
+systick.c:14:14:systick_get_ms	0	static

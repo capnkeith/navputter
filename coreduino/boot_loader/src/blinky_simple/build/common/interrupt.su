@@ -1,0 +1,2 @@
+interrupt.c:3:6:isr_panic	0	static
+interrupt.c:8:6:isr_ignore	0	static

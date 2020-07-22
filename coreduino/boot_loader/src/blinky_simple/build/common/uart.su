@@ -1,0 +1,4 @@
+uart.c:4:5:uart_get_port_index	0	static
+uart.c:22:6:uart_setup	8	static
+uart.c:52:6:uart_putchar	0	static
+uart.c:60:6:uart_putline	0	static
