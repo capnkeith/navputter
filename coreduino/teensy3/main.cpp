@@ -39,17 +39,33 @@
 #include "usb_mouse.h"
 #include "IntervalTimer.h"
 
-usb_serial_class myser;
+
+void navputter_yield( void );
+class navputter_serial_class : public usb_serial_class
+{
+    public:
+        virtual int read() 
+        {
+            int i  = usb_serial_class::read();
+            navputter_yield();
+            return i;
+        }
+};
+
+
+navputter_serial_class myser;
 usb_mouse_class mymouse;
 usb_keyboard_class mykey;
 IntervalTimer mytimer;
 
 volatile uint32_t global_ticks=0;
+uint32_t last_watchticks=0;
 
 void event( int event, int p1, int p2 );
 void process_mouse( void );
 char serial_read_gpio_port(void);
 void serial_read_gpio(void);
+void tick_watchdog(void);
 
 enum mouse_directions
 {
@@ -225,6 +241,17 @@ key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
         {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'}, {KA_MOUSE_RT_CLICK,'#'}, {KA_REPORT_KEY, 'D'}},
 };
 
+void enable_watchdog(void)
+{
+    WDOG_UNLOCK = WDOG_UNLOCK_SEQ1;
+    WDOG_UNLOCK = WDOG_UNLOCK_SEQ2;
+    delayMicroseconds(1); // Need to wait a bit..
+    WDOG_STCTRLH = 0x0001; // Enable WDG
+    WDOG_TOVALL = 200; // The next 2 lines sets the time-out value. This is the value that the watchdog timer compare itself to.
+    WDOG_TOVALH = 0;
+    WDOG_PRESC = 0; // This sets prescale clock so that the watchdog timer ticks at 1kHZ instead of the default 1kHZ/4 = 200 HZ
+    last_watchticks = global_ticks = 1;
+}
 
 global_state_t global_config={
     {0x0100,4,4,1,1,1},              /* version 1.1, 4 rows, 4 cols, flip rows 1, flip cols 1, mouse step 1 */
@@ -243,7 +270,10 @@ void eeprom_init(void)
     eeprom_header_t hdr_default ={0};
     eeprom_initialize();
     
-    while( !eeprom_is_ready() );
+    while( !eeprom_is_ready() )
+    {
+        tick_watchdog();
+    }
     eeprom_read_block((void *)&hdr, eeprom_start, sizeof( hdr ));
 #define _ED_( c, _field_, t, _default_, m, mx, fmt, fnunc, str ) hdr_default._field_ = _default_;
     _EEPROM_DESC_
@@ -780,6 +810,7 @@ void serial_read_gpio(void)
                 dbgprint("insane in membrane %s %d\n", __FILE__, __LINE__ );
                 break;
         }
+        dbgprint("r%c OK:0x%x\r\n",port,v);
         return;
     }
 }
@@ -906,22 +937,23 @@ void serial_init(void)
 {
     int i;
     uint8_t blink=1;
-    for (i=0; i<10; i++ )
+    for (i=0; i<20; i++ )
     {
         if ( myser ) break;
         _delay_ms(100);
         digitalWriteFast(13, blink );
+        tick_watchdog();
         blink ^= 1;
     }
-    _delay_ms( 1000 );
     myser.clear();
     myser.flush();
 
-#define _BW_(str) dbgprint( str"\r\n" ); _delay_ms(20);
+#define _BW_(str) dbgprint( str"\r\n" );
     _BIG_WHALE_
 #undef _BW_
     dbgprint("\n");
     usage();
+    myser.flush();
 }
 
 void process_mouse( void )
@@ -951,13 +983,38 @@ void process_serial(void )
     }
 }
 
+
+void tick_watchdog(void)
+{
+    if ( !last_watchticks ) return;
+    if ( last_watchticks + 2 < global_ticks ) /* required. */
+    {
+        last_watchticks = global_ticks;
+        cli();
+        WDOG_REFRESH = 0xA602;
+        WDOG_REFRESH = 0xB480;
+        sei();
+    }
+}
+
+void navputter_yield( void )
+{
+    tick_watchdog();
+}
+
 #define ONE_SECOND 1000
 
 extern "C" int main(void)
 {
+    mytimer.begin(tickme, 1000 );
+    enable_watchdog();
     eeprom_init();
     usb_init();
-    while( !usb_configuration );
+    while( !usb_configuration )
+    {
+        _delay_ms(1);
+        tick_watchdog();
+    }
 
     mymouse.begin();
     mymouse.screenSize(global_config.config.screen_x, global_config.config.screen_y, global_config.config.screen_mac);
@@ -965,12 +1022,13 @@ extern "C" int main(void)
     pinMode(13, OUTPUT);
     DDRD =0x0f;
     init_keys();
+    
     serial_init();
 
-    mytimer.begin(tickme, 1000 );
     uint32_t last_tick=0;
     uint32_t blink_tick=0;
     uint8_t flag=0;
+    
     while (1) 
     {
         if ( myser.peek()  )
@@ -982,15 +1040,16 @@ extern "C" int main(void)
             last_tick = global_ticks;
             readkeypad();   
             process_mouse();
+            tick_watchdog();    
         }
-#if 0
         if ( global_ticks - blink_tick >= ONE_SECOND )
         {
             blink_tick = global_ticks;
             flag ^= 0x20;
             PORTB = flag;   
+            myser.flush();
+            myser.clear();
         }
-#endif
     }
 }
 
