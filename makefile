@@ -24,16 +24,21 @@
 # Run "make help" for target help.
 #---------------- Programming Options (avrdude) ----------------
 
+MCU          = atmega32u4
+ARCH         = AVR8
+BOARD        = LEONARDO
+F_CPU        = 16000000
+#AVRDUDE_PROGRAMMER = avr109
+AVRDUDE_PROGRAMMER = usbasp
+#AVRDUDE_PROGRAMMER = usbtiny
+#AVRDUDE_PORT = /dev/tty.usbmodem1463101
+EEPROM_SIZE  = 1024
 # Programming hardware
 # Type: avrdude -c ?
 # to get a full listing.
 #
-AVRDUDE_PROGRAMMER = usbasp
-#AVRDUDE_PROGRAMMER = usbtiny
-AVRDUDE = avrdude
-
 # com1 = serial port. Use lpt1 to connect to parallel port.
-AVRDUDE_PORT = usb
+#AVRDUDE_PORT = usb
 
 AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex
 #AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(TARGET).eep
@@ -58,24 +63,16 @@ AVRDUDE_FLAGS += $(AVRDUDE_NO_VERIFY)
 AVRDUDE_FLAGS += $(AVRDUDE_VERBOSE)
 AVRDUDE_FLAGS += $(AVRDUDE_ERASE_COUNTER)
 
-MCU          = at90usb1286
-ARCH         = AVR8
-BOARD        = USBKEY
-F_CPU        = 16000000
 F_USB        = $(F_CPU)
 OPTIMIZATION = s
 TARGET       = navputter
-SRC          = $(TARGET).c VirtualSerialMouse.c Descriptors.c uTFT_ST7735.c myutil.c minmea.c navnmea.c navkeys.c $(LUFA_SRC_USB)
 LUFA_PATH    = ../../../../LUFA
-CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/
+CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/ -DEEPROM_SIZE=$(EEPROM_SIZE)
 LD_FLAGS     = 
+LD_FLAGS     = -Wl,-u,vfprintf -lprintf_flt -lm 
 
 # Default target
 all:
-
-# Program the device.  
-program: $(TARGET).hex $(TARGET).eep
-	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH) $(AVRDUDE_WRITE_EEPROM)
 
 # Program the device.  
 program: $(TARGET).hex $(TARGET).eep
@@ -86,17 +83,8 @@ DMBS_LUFA_PATH ?= $(LUFA_PATH)/Build/LUFA
 include $(DMBS_LUFA_PATH)/lufa-sources.mk
 include $(DMBS_LUFA_PATH)/lufa-gcc.mk
 
-MCU          = at90usb1287
-ARCH         = AVR8
-BOARD        = USBKEY
-F_CPU        = 16000000
-F_USB        = $(F_CPU)
-OPTIMIZATION = s
 TARGET       = navputter
-SRC          = $(TARGET).c VirtualSerialMouse.c Descriptors.c uTFT_ST7735.c myutil.c navnmea.c minmea.c $(LUFA_SRC_USB) $(LUFA_SRC_USBCLASS)
-LUFA_PATH    = ../../../../LUFA
-CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/
-LD_FLAGS     = -Wl,-u,vfprintf -lprintf_flt -lm 
+SRC          = $(TARGET).cpp VirtualSerialMouse.c Descriptors.c $(LUFA_SRC_USB) $(LUFA_SRC_USBCLASS)
 
 # Default target
 all:
