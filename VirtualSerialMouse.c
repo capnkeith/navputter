@@ -34,7 +34,6 @@
  */
 
 #include "VirtualSerialMouse.h"
-#include "navputter.h"
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -44,10 +43,65 @@
 extern uint8_t key_out;
 extern uint8_t modifier_out;
 extern uint8_t global_mouse_mode;
-extern uint8_t global_mouse_dir;
+uint8_t global_mouse_dir;
+#define MAX_KEY_BUFFER_SZ 16
+uint16_t out_key_buffer[ MAX_KEY_BUFFER_SZ ];   /* key presses going out the USB */
+
+                                                /* I don't know if volitle is required or not... */
+volatile uint8_t out_key_head = 0;              /* head index for the keypress buffer */
+volatile uint8_t out_key_tail = 0;              /* tail index for the keypress buffer */
+
+/*
+ * pop function for the vserial driver to retrieve the next keypress. Returns 0 if no more
+ * keys queued ortherwise key code in high order 2 bytes, modifier in low two bytes
+ */
+uint16_t pop_key(void)
+{
+    if ( out_key_tail == out_key_head ) 
+        return 0;
+    uint16_t key = out_key_buffer[ out_key_tail ];
+    out_key_tail = ( out_key_tail == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_tail+1;
+    return key; 
+}
+
+/*
+ * simple circular buffer for holding keypresses until they can be transmitted
+ * out the usb. Push the key and modifier. Key goes in high byte, modifiers in the low order byte.
+ */
+void push_key( uint8_t key, uint8_t mod )
+{
+    if ( out_key_head == MAX_KEY_BUFFER_SZ )
+    {
+        if ( out_key_tail == 0 )
+        {
+            printf("key buffer full");
+            return;  
+        }
+        else
+        {
+            out_key_buffer[out_key_head] = (uint16_t)key << 8 | mod;
+            out_key_head = 0;
+        }
+    }
+    else
+    {
+        if ( out_key_head + 1 == out_key_tail )
+        {
+            printf("key buffer full\n");
+            return;
+        }
+        else
+        {
+            out_key_buffer[out_key_head] = (uint16_t)key << 8 | mod;
+            out_key_head = ( out_key_head == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_head+1;
+        }
+    }
+}
+
 
 
 static uint8_t PrevHIDReportBuffer[MAX(sizeof(USB_KeyboardReport_Data_t), sizeof(USB_MouseReport_Data_t))];
+
 USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface =
 	{
 		.Config =
@@ -93,7 +147,10 @@ USB_ClassInfo_HID_Device_t Device_HID_Interface =
 
 
 
- 
+USB_ClassInfo_CDC_Device_t *get_serial_cdc_interface(void)
+{
+    return &VirtualSerial_CDC_Interface;
+} 
 
 
 
@@ -124,8 +181,6 @@ void SetupHardware(void)
 #endif
 
 	/* Hardware Initialization */
-	Joystick_Init();
-	LEDs_Init();
 	USB_Init();
 }
 
@@ -133,13 +188,11 @@ void SetupHardware(void)
 /** Event handler for the library USB Connection event. */
 void EVENT_USB_Device_Connect(void)
 {
-	LEDs_SetAllLEDs(LEDMASK_USB_ENUMERATING);
 }
 
 /** Event handler for the library USB Disconnection event. */
 void EVENT_USB_Device_Disconnect(void)
 {
-	LEDs_SetAllLEDs(LEDMASK_USB_NOTREADY);
 }
 
 void EVENT_USB_Device_ConfigurationChanged(void)
@@ -148,7 +201,6 @@ void EVENT_USB_Device_ConfigurationChanged(void)
 	ConfigSuccess &= HID_Device_ConfigureEndpoints(&Device_HID_Interface);
 	ConfigSuccess &= CDC_Device_ConfigureEndpoints(&VirtualSerial_CDC_Interface);
 	USB_Device_EnableSOFEvents();
-	LEDs_SetAllLEDs(ConfigSuccess ? LEDMASK_USB_READY : LEDMASK_USB_ERROR);
 }
 
 /** Event handler for the library USB Control Request reception event. */
@@ -180,6 +232,8 @@ enum report_states
 uint8_t key_state = SEND_KEY;
 
 
+void get_mouse_status( int8_t *y, int8_t *x, uint8_t *buttons );
+
 bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDInterfaceInfo,
                                          uint8_t* const ReportID,
                                          const uint8_t ReportType,
@@ -187,50 +241,40 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
                                          uint16_t* const ReportSize)
 {
     static uint8_t mod = 0;
-    static uint32_t empty=0;
-	if (!global_mouse_dir)
-	{
-        USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
-        if ( key_state == SEND_KEY )
+
+    USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
+    if ( key_state == SEND_KEY )
+    {
+        uint16_t key = pop_key();
+        key_state = CLEAR_KEY;
+        if ( key )
         {
-            uint16_t key = pop_key();
-            if ( key )
-            {
-                mod = KeyboardReport->Modifier = key & 0x00ff;
-		        KeyboardReport->KeyCode[0] = (key & 0xff00) >> 8;
-            }
-            else
-            {     
-/*
-                if ( mod & ( HID_KEYBOARD_MODIFIER_RIGHTALT | HID_KEYBOARD_MODIFIER_LEFTALT)) 
-                {
-                    if ( empty++ > 1000 )
-                    {
-                        mod = 0;
-                        empty=0;
-                    }
-                }
-                else*/ mod = 0;
-            }
-            key_state = CLEAR_KEY;
+            mod = KeyboardReport->Modifier = key & 0x00ff;
+		    KeyboardReport->KeyCode[0] = (key & 0xff00) >> 8;
         }
         else
-        {
-            KeyboardReport->Modifier = mod;
-		    KeyboardReport->KeyCode[0] = 0;
-            key_state = SEND_KEY;
+        { 
+            goto PROCESS_MOUSE;    
         }
-        KeyboardReport->Modifier = mod;
-		*ReportID   = HID_REPORTID_KeyboardReport;
-		*ReportSize = sizeof(USB_KeyboardReport_Data_t);
-        return false;
     }
-	else
-	{
-		USB_MouseReport_Data_t* MouseReport = (USB_MouseReport_Data_t*)ReportData;
+    else
+    {
+        KeyboardReport->Modifier = 0;
+		KeyboardReport->KeyCode[0] = 0;
+        key_state = SEND_KEY;
+    }
+    KeyboardReport->Modifier = mod;
+	*ReportID   = HID_REPORTID_KeyboardReport;
+	*ReportSize = sizeof(USB_KeyboardReport_Data_t);
+    return false;
 
-        if ( global_mouse_dir & MOUSE_DIR_UP )
-		  MouseReport->Y = -1;
+PROCESS_MOUSE:
+    {
+		USB_MouseReport_Data_t* MouseReport = (USB_MouseReport_Data_t*)ReportData;
+        get_mouse_status( &MouseReport->Y, &MouseReport->X, &MouseReport->Button );        
+//        if ( global_mouse_dir & MOUSE_DIR_UP )
+//		  MouseReport->Y = -1;
+#if 0
         if ( global_mouse_dir & MOUSE_DIR_DOWN )
 		  MouseReport->Y = 1;
         if ( global_mouse_dir & MOUSE_DIR_LEFT )
@@ -243,7 +287,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 
         if ( global_mouse_dir & MOUSE_RT_CLICK )
 		  MouseReport->Button |= (1 << 1);
-
+#endif
 		*ReportID   = HID_REPORTID_MouseReport;
 		*ReportSize = sizeof(USB_MouseReport_Data_t);
 		return true;
@@ -265,19 +309,7 @@ void CALLBACK_HID_Device_ProcessHIDReport(USB_ClassInfo_HID_Device_t* const HIDI
                                           const void* ReportData,
                                           const uint16_t ReportSize)
 {
-	uint8_t  LEDMask   = LEDS_NO_LEDS;
-	uint8_t* LEDReport = (uint8_t*)ReportData;
 
-	if (*LEDReport & HID_KEYBOARD_LED_NUMLOCK)
-	  LEDMask |= LEDS_LED1;
-
-	if (*LEDReport & HID_KEYBOARD_LED_CAPSLOCK)
-	  LEDMask |= LEDS_LED3;
-
-	if (*LEDReport & HID_KEYBOARD_LED_SCROLLLOCK)
-	  LEDMask |= LEDS_LED4;
-
-	LEDs_SetAllLEDs(LEDMask);
 }
 
 /** Event handler for the USB device Start Of Frame event. */
@@ -308,6 +340,7 @@ void EVENT_CDC_Device_ControLineStateChanged(USB_ClassInfo_CDC_Device_t *const C
 void lufa_main_loop(void)
 {
 	CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
+    CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
     HID_Device_USBTask(&Device_HID_Interface);
     USB_USBTask();
 }
