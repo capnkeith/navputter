@@ -4,11 +4,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+#ifdef __cplusplus
 extern "C" 
 {
-#include "VirtualSerialMouse.h"
-void ser_print( const char *str, ... );
+#endif
+    #include "VirtualSerialMouse.h"
+    void ser_print( const char *str, ... );
+    void SetupHardware(void); 
+    void lufa_main_loop(void);
+    void start_timer(uint32_t unused);
+#ifdef __cplusplus
 }
+#endif
 extern volatile uint32_t global_ticks;
 
 enum key_arrow_states
@@ -222,16 +230,6 @@ enum mouse_buttons
     NP_TOTAL_MOUSE_BUTTONS
 };
 
-typedef struct global_state
-{   
-    eeprom_header_t config;
-    uint8_t         keystate[ MAX_KEY_COLS ];
-    uint8_t         last_keystate[ MAX_KEY_COLS ];
-    uint8_t         keypress[MAX_KEY_ROWS][ MAX_KEY_COLS ];
-    key_map_t       cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
-}global_state_t;
-
-extern global_state_t global_config;
 
 struct key_code
 {
@@ -275,7 +273,6 @@ class lufa_mouse_class
         uint8_t         m_mouse_clicks[NP_TOTAL_MOUSE_BUTTONS];
 };
 
-extern lufa_mouse_class mymouse;
 
 
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
@@ -324,11 +321,11 @@ class usb_serial_class
             fputs(str, m_stream);
             return len;
         }
-        size_t write(const char *str )
+        size_t virtual write(const char *str )
         {
             return write(str, strlen(str));
         } 
-        int read(void) 
+        int virtual read(void) 
         {
             return fgetc(m_stream);
         }
@@ -354,18 +351,12 @@ class navputter_watchdog_class
             wdt_reset();
         }
 };
-extern navputter_watchdog_class    mydog; 
 
 class navputter_serial_class : public usb_serial_class
 {
     public:
 
-        virtual int read() 
-        {
-            int i  = usb_serial_class::read();
-            mydog.kick();
-            return i;
-        }
+        int virtual read(void);
         void print( const char *str, ... )
         {
             char buffer[256];
@@ -377,8 +368,6 @@ class navputter_serial_class : public usb_serial_class
         }
 };
 
-extern "C" void start_timer(uint32_t milliseconds);
-extern navputter_serial_class      myser;
 
 
 
@@ -408,9 +397,9 @@ public:
         }
     }
 
-    void tick()
+    void virtual tick()
     {
-        m_callback();
+        if ( m_callback ) m_callback();
     }
 private:
     void (*m_callback)(void);
@@ -447,8 +436,7 @@ class usb_keyboard_class
     private:
         struct key_code m_key_codes[0xff];
 };
-extern usb_keyboard_class          mykey;
-class navputter_keypad
+class navputter_keypad_class
 {
     enum
     {
@@ -458,181 +446,18 @@ class navputter_keypad
         KEYPAD_BIT_B3 = 6,             
     };
 public:
-    void begin(void)
-    {
-        m_keypad_state = KP_SET_COLS;
-        m_next_state=0xff;
-        m_col=0;
-        m_until = 0;
-        m_cur_rows = 0;
-        memcpy( global_config.last_keystate, global_config.keystate, global_config.config.cols );
-        DDRD |= 0x0f;
-        DDRB = ~((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
-        PORTB |= ((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
-        init_keys();
-    }
+    void begin(void);
 
-    void press(uint8_t event, uint8_t row, uint8_t col)
-    {
-        row = (global_config.config.flip_rows)?global_config.config.rows - row - 1:row;
-        col = (global_config.config.flip_cols)?global_config.config.cols - col - 1:col;
-
-        uint8_t action = global_config.cur_map[row][col].action;
-        switch(action)
-        {
-            case KA_KEY_SCANCODE_ACTION:
-                if ( event == EVENT_KEYPAD_DOWN )
-                {
-                    mykey.write_scancode( global_config.cur_map[row][col].p1 );
-                    mykey.write_scancode( global_config.cur_map[row][col].p2 );
-                    mykey.write_scancode( global_config.cur_map[row][col].p3 );
-                }
-            break;
-            case KA_SPECIAL_ACTION:
-                if ( event == EVENT_KEYPAD_DOWN )
-                {
-                    switch( global_config.cur_map[row][col].p1 )
-                    {
-                        case SA_TOGGLE_KEY_ARROWS:
-                            global_config.config.key_arrows = (global_config.config.key_arrows < ARROW_CONFIG_FAST_KEY ) ? global_config.config.key_arrows + 1 : 0;
-                            myser.print("key arrows now %d\r\n", global_config.config.key_arrows );
-                            break;
-                        default:
-                            myser.print("unknown special action %d at %d,%d\n", global_config.cur_map[row][col].p1, row, col );
-                            break;
-                    }
-                }
-                break;
-            case KA_KEY_ACTION:
-                if ( event == EVENT_KEYPAD_DOWN )
-                {
-                    mykey.write(global_config.cur_map[row][col].p1);
-                }
-            break;
-            case KA_MOUSE_LEFT:
-                mymouse.set_dir( NP_MOUSE_LEFT, (event == EVENT_KEYPAD_DOWN )?global_config.config.mouse_step:0 ); 
-                break;
-            case KA_MOUSE_RIGHT:
-                mymouse.set_dir( NP_MOUSE_RIGHT, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
-                break;
-            case KA_MOUSE_UP:
-                if ( global_config.config.key_arrows == ARROW_CONFIG_MOUSE )
-                    mymouse.set_dir( NP_MOUSE_UP, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
-                else if ( global_config.config.key_arrows == ARROW_CONFIG_SLOW_KEY )
-                {
-                    myser.print("writing scancode %x\n\r", global_config.cur_map[row][col].p1 );
-                    mykey.write_scancode( global_config.cur_map[row][col].p1 );
-                }
-                else 
-                {
-                    myser.print("writing fast mouse scancode %x\n\r", global_config.cur_map[row][col].p2 );
-                    mykey.write_scancode( global_config.cur_map[row][col].p2 );
-                }
-                break;
-            case KA_MOUSE_DOWN:
-                mymouse.set_dir( NP_MOUSE_DOWN, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
-                break;
-            case KA_REPORT_KEY:
-                myser.print("# report %s : %d,%d = %c\n\r", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, global_config.cur_map[row][col].p1 );
-                break;
-            case KA_MOUSE_LT_CLICK:
-                mymouse.click( MB_LEFT, event );
-                break;
-            case KA_MOUSE_MID_CLICK:
-                mymouse.click( MB_MIDDLE, event );
-                break;
-            case KA_MOUSE_RT_CLICK:
-                mymouse.click( MB_RIGHT, event );
-                break;
-            case KA_MOUSE_STEP:
-                if ( event == EVENT_KEYPAD_UP )
-                {
-                    global_config.config.mouse_step = global_config.config.mouse_step << 1;
-                    if ( global_config.config.mouse_step >= MAX_MOUSE_STEP ) global_config.config.mouse_step = 1;
-                }
-                break;
-            default:
-                myser.print("ERROR: unknown event %d in navputter_keypad::press() %s %d\n", event, __FILE__, __LINE__ );
-                break;
-        }
-    }
+    void press(uint8_t event, uint8_t row, uint8_t col);
 
 
-    void trigger()
-    {
-		uint8_t col;
-		uint8_t row;
-        for ( col=0; col< global_config.config.cols; col++ )
-        {
-            if ( global_config.keystate[col] != global_config.last_keystate[col] )
-            {
-				for ( row=0; row< global_config.config.rows; row++ )
-				{
-					if ( global_config.keystate[col] & (1<<row) )
-					{
-						if ( global_config.keypress[row][col]  != EVENT_KEYPAD_UP)
-						{
-							press( EVENT_KEYPAD_UP, row, col );
-						}
-						global_config.keypress[row][col] = EVENT_KEYPAD_UP; 
-					}
-					else
-					{
-						if ( global_config.keypress[row][col] != EVENT_KEYPAD_DOWN )
-						{
-							press( EVENT_KEYPAD_DOWN, row, col);
-						}
-						global_config.keypress[row][col] = EVENT_KEYPAD_DOWN; 
-					}
-				 }
-            }
-            global_config.last_keystate[col] = global_config.keystate[col]; 
-        }
-    }
+    void trigger();
 
 
 #define READ_PIN_BIT_INTO( _pos_, _port_in_, _bit_ )\
     ((((_port_in_) & ( 1<< _bit_ )) >> _bit_) << _pos_)
 
-    void poll(void)
-    {
-        switch( m_keypad_state )
-        {
-            case KP_SET_COLS:
-//                PORTD &= 0xf0;  // set low nibble to zero
-//                PORTD &= 0xf0;
-                PORTD =~ (1<<m_col);
-                m_keypad_state = KP_WAIT;
-                m_until = global_ticks + SETTLE_KEY_BOUNCE;
-                m_next_state = KP_READ_ROWS;
-                break;
-
-            case KP_WAIT:
-                if ( global_ticks < m_until ) return;
-                m_keypad_state = m_next_state;
-                break;
-
-            case KP_READ_ROWS:
-                m_cur_rows = 
-                    READ_PIN_BIT_INTO( 0, PINB, KEYPAD_BIT_B0 ) |
-                    READ_PIN_BIT_INTO( 1, PINB, KEYPAD_BIT_B1 ) |
-                    READ_PIN_BIT_INTO( 2, PINB, KEYPAD_BIT_B2 ) |
-                    READ_PIN_BIT_INTO( 3, PINB, KEYPAD_BIT_B3 );
-
-                global_config.keystate[m_col] = m_cur_rows;
-                m_keypad_state =KP_SET_COLS;
-                m_col++;
-                if ( m_col >= global_config.config.cols ) 
-                {
-                    m_col=0;
-                    trigger();
-                }
-                break;
-            default:
-                myser.print("puke on default switch %s %d\n", __FILE__, __LINE__ );
-                break;
-        }
-    }
+    void poll(void);
 private:
     uint8_t  m_keypad_state;
     uint8_t  m_next_state;
@@ -644,13 +469,11 @@ private:
 
 extern void *eeprom_start;
 
-class
-generic_eeprom_class
+class generic_eeprom_class
 {
     public:
         void begin(void)
         {
-            myser.write("hello generic_eeprom_class\n\r");
         }
 
         void end(void)
@@ -661,11 +484,8 @@ generic_eeprom_class
         {
             return eeprom_is_ready();
         }
-        void read( void *buf, uint32_t len )
-        {
-            myser.print("# reading eeprom %d bytes\n", len );
-            eeprom_read_block( buf, eeprom_start, len );
-        }
+        virtual void read( void *buf, uint32_t len );
+
         void write( void *buf, uint32_t len )
         {
             eeprom_write_block( buf, eeprom_start, len );
@@ -675,37 +495,10 @@ generic_eeprom_class
 
 class navputter_eeprom_class : public generic_eeprom_class
 {
-public:
-    void begin(void)
-    {
-        generic_eeprom_class::begin();
-        while ( !ready() ) mydog.kick();
-        myser.print("eeprom ready.\n\r");
-    }
-
-    void init(void)
-    {
-        eeprom_header_t hdr={0};
-        eeprom_header_t hdr_default ={0};
-        read((void *)&hdr, sizeof( hdr ));
-
-#define _ED_( c, _field_, t, _default_, m, mx, fmt, fnunc, str ) hdr_default._field_ = _default_;
-            _EEPROM_DESC_
-#undef _ED_    
-
-        if ( hdr_default.version != hdr.version )
-        {
-            memcpy( (void *)&global_config.config, (void *)&hdr_default, sizeof( hdr_default ) );
-//            write((void *)&global_config.config, sizeof(global_config.config));
-            write((void *)&global_config.config, sizeof(eeprom_layout_t));
-            myser.print("wrote default settings to eeprom. hdrversion=%x, hdr_default=%x\n", hdr.version, hdr_default.version);
-        }
-        else
-        {
-            memcpy( (void *)&global_config.config, (void *)&hdr, sizeof( hdr_default ) );
-            myser.print("read version %x from eeprom\n", hdr.version );
-        }
-    }
+    public:
+        void begin(void);
+        void init(void);
+        virtual void read( void *buf, uint32_t len );
 };
 
 
@@ -714,9 +507,58 @@ public:
 
 
 
+class navputter_class
+{
+public:
+    void begin()
+    {
+        memset( &m_config, 0, sizeof( m_config ) );
+        memset( m_keystate, INVALID_KEYSTATE, sizeof( m_keystate) );
+        memset( m_keypress, 0, sizeof( m_keypress) );
+        memset( m_cur_map, 0, sizeof( m_cur_map) );
 
+	    SetupHardware();
+	    GlobalInterruptEnable();
+        m_serial.begin(9600);
+        m_serial.print("hello serial\n\r");
+        m_keyboard.begin();
+        m_timer.begin( NULL, 1000 );
+        m_watchdog.begin();
+        m_keypad.begin();
+        m_mouse.begin();
+        while( !m_serial.available() ) m_watchdog.kick();
+        m_eeprom.begin();
+        m_eeprom.init();
+    }
+       
+    void set_keymap( key_map_t *map, size_t size )
+    {
+        memcpy( m_cur_map, map, size );
+    }
 
-extern navputter_timer_class       mytimer;
+    lufa_mouse_class            m_mouse;
+    navputter_timer_class       m_timer;
+    navputter_watchdog_class    m_watchdog; 
+    navputter_serial_class      m_serial;
+    usb_keyboard_class          m_keyboard;
+    navputter_keypad_class      m_keypad;
+    navputter_eeprom_class      m_eeprom;
+
+    eeprom_header_t             m_config;
+    uint8_t                     m_keystate[ MAX_KEY_COLS ];
+    uint8_t                     m_last_keystate[ MAX_KEY_COLS ];
+    uint8_t                     m_keypress[MAX_KEY_ROWS][ MAX_KEY_COLS ];
+    key_map_t                   m_cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+};
+
+#define DOG     myputter.m_watchdog
+#define MOUSE   myputter.m_mouse
+#define TIMER   myputter.m_timer
+#define KEY     myputter.m_keyboard
+#define PAD     myputter.m_keypad
+#define PROM    myputter.m_eeprom
+#define SERIAL  myputter.m_serial
+#define CONFIG  myputter.m_config
 
 #endif // __NAVPUTTER_H__
 

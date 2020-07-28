@@ -79,7 +79,8 @@
 
 
 
-
+navputter_class myputter={};
+navputter_class *PUTT=NULL;
 
 volatile uint32_t global_ticks=0;
 ISR (TIMER1_COMPA_vect)
@@ -92,14 +93,6 @@ void start_timer(uint32_t msecs);
 
 
 
-global_state_t global_config={
-    {0x0100,4,4,1,1,1},              /* version 1.1, 4 rows, 4 cols, flip rows 1, flip cols 1, mouse step 1 */
-
-    { INVALID_KEYSTATE},
-    { 0 },
-    { 0 },
-    { 0 },
-};
 
 
 key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
@@ -141,24 +134,23 @@ extern "C" void ser_print( const char *str, ... )
     va_list args;
     va_start (args, str);
     vsprintf (buffer, str, args);
-    myser.write(buffer);
+    SERIAL.write(buffer);
     va_end (args);
 }
 
 void key_up_event( int row, int col )
 {
-    myser.print("# key_up_event on %d %d\r\n", row, col);
+    SERIAL.print("# key_up_event on %d %d\r\n", row, col);
 }
       
 void key_down_event( int row, int col )
 {
-    myser.print("# key_down_event on %d %d\r\n", row, col);
+    SERIAL.print("# key_down_event on %d %d\r\n", row, col);
 }
       
 void init_keys(void)
 {
-    memcpy( global_config.cur_map, base_map, sizeof( base_map ));
-//   memcpy( global_config.cur_map, temp_map, sizeof( temp_map ));
+    myputter.set_keymap( (key_map_t *)base_map, sizeof( base_map ));
 }
 
 FILE *gfp=NULL;
@@ -181,12 +173,6 @@ void navputter_yield(void);
 #define MAX_KEYS_PER_SEQ    4
 
 
-navputter_serial_class      myser;
-usb_keyboard_class          mykey;
-navputter_timer_class       mytimer;
-navputter_watchdog_class    mydog; 
-navputter_keypad            mykeypad; 
-lufa_mouse_class             mymouse; 
 void *eeprom_start = NULL;
 
  
@@ -198,7 +184,6 @@ void *eeprom_start = NULL;
 
 
 
-navputter_eeprom_class      myprom;
 /* 
  * this is our timer interrupt service routine. This is a real interrupt service routine, so
  * don't try and do much in here. global_ticks is milliseconds since power on
@@ -226,12 +211,9 @@ void timer_callback(void)
 {
     DDRB |= 1;
     PORTB = PINB ^ 1;
-//    if ( myser.available() ) myser.print("running %ld milliseconds\n\r", global_ticks);
 
 }
 
-extern "C" void SetupHardware(void);
-extern "C" void lufa_main_loop(void);
 
 enum
 {
@@ -241,48 +223,244 @@ enum
 
 extern "C" void get_mouse_status( int8_t *y, int8_t *x, uint8_t *buttons )
 {
-    *y = mymouse.get_dir( NP_MOUSE_DOWN ) - mymouse.get_dir( NP_MOUSE_UP );
-    *x = mymouse.get_dir( NP_MOUSE_RIGHT ) - mymouse.get_dir( NP_MOUSE_LEFT );
+    *y = MOUSE.get_dir( NP_MOUSE_DOWN ) - MOUSE.get_dir( NP_MOUSE_UP );
+    *x = MOUSE.get_dir( NP_MOUSE_RIGHT ) - MOUSE.get_dir( NP_MOUSE_LEFT );
     *buttons = 
-            (mymouse.get_buttons( MB_LEFT )) ? (1 << LUFA_MB_BUTTON_LEFT)  : 0  |
-            (mymouse.get_buttons( MB_RIGHT )) ? (1 << LUFA_MB_BUTTON_RIGHT ) : 0;
+            (MOUSE.get_buttons( MB_LEFT )) ? (1 << LUFA_MB_BUTTON_LEFT)  : 0  |
+            (MOUSE.get_buttons( MB_RIGHT )) ? (1 << LUFA_MB_BUTTON_RIGHT ) : 0;
 }
 
 extern "C" int main(void)
 {
-	SetupHardware();
-	GlobalInterruptEnable();
-    myser.begin(9600);
-    mykey.begin();
-    mytimer.begin( timer_callback, 1000 );
-    mydog.begin();
-    mykeypad.begin();
-    mymouse.begin();
-    while( !myser.available() ) mydog.kick();
-#define _BW_(str) myser.write(str"\n\r");
+    PUTT=&myputter;
+    myputter.begin();
+
+#define _BW_(str) SERIAL.write(str"\n\r");
     _BIG_WHALE_
 #undef _BW_
 
-   //DDRD = (1<<5);
-   // DDRB = 0;
-   // PORTD = 0xff;
-   // PORTB = 0xff;
-    myprom.begin();
-    myprom.init();
-
-//    mykey.write('a');
-//    mykey.write('A');
-//    mykey.write('b');
-//    mykey.write('B');
-#define MAX_LINE_SIZE 256 
-
 	for (;;)
 	{
-        mykeypad.poll();
-        mytimer.poll();
-        mydog.kick();
+        PAD.poll();
+        TIMER.poll();
+        DOG.kick();
         lufa_main_loop();
-        continue;
+    }
+}
+
+void navputter_eeprom_class::begin(void)
+{
+    generic_eeprom_class::begin();
+    while ( !ready() ) DOG.kick();
+    SERIAL.print("eeprom ready.\n\r");
+}
+
+void navputter_eeprom_class::read( void *buf, uint32_t len )
+{
+    SERIAL.print("# reading eeprom %d bytes\n", len );
+    eeprom_read_block( buf, eeprom_start, len );
+}
+
+
+int navputter_serial_class::read(void)
+{
+    int i  = usb_serial_class::read();
+    DOG.kick();
+    return i;
+}
+
+void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
+{
+    row = (CONFIG.flip_rows)?CONFIG.rows - row - 1:row;
+    col = (CONFIG.flip_cols)?CONFIG.cols - col - 1:col;
+
+    uint8_t action = myputter.m_cur_map[row][col].action;
+    switch(action)
+    {
+        case KA_KEY_SCANCODE_ACTION:
+            if ( event == EVENT_KEYPAD_DOWN )
+            {
+                KEY.write_scancode( myputter.m_cur_map[row][col].p1 );
+                KEY.write_scancode( myputter.m_cur_map[row][col].p2 );
+                KEY.write_scancode( myputter.m_cur_map[row][col].p3 );
+            }
+        break;
+        case KA_SPECIAL_ACTION:
+            if ( event == EVENT_KEYPAD_DOWN )
+            {
+                switch( myputter.m_cur_map[row][col].p1 )
+                {
+                    case SA_TOGGLE_KEY_ARROWS:
+                        CONFIG.key_arrows = (CONFIG.key_arrows < ARROW_CONFIG_FAST_KEY ) ?  CONFIG.key_arrows + 1 : 0;
+                        SERIAL.print("key arrows now %d\r\n", CONFIG.key_arrows );
+                        break;
+                    default:
+                        SERIAL.print("unknown special action %d at %d,%d\n", myputter.m_cur_map[row][col].p1, row, col );
+                        break;
+                }
+            }
+            break;
+        case KA_KEY_ACTION:
+            if ( event == EVENT_KEYPAD_DOWN )
+            {
+                KEY.write(myputter.m_cur_map[row][col].p1);
+            }
+        break;
+        case KA_MOUSE_LEFT:
+            MOUSE.set_dir( NP_MOUSE_LEFT, (event == EVENT_KEYPAD_DOWN )?CONFIG.mouse_step:0 ); 
+            break;
+        case KA_MOUSE_RIGHT:
+            MOUSE.set_dir( NP_MOUSE_RIGHT, (event == EVENT_KEYPAD_DOWN)?CONFIG.mouse_step:0); 
+            break;
+        case KA_MOUSE_UP:
+            if ( CONFIG.key_arrows == ARROW_CONFIG_MOUSE )
+                MOUSE.set_dir( NP_MOUSE_UP, (event == EVENT_KEYPAD_DOWN)?CONFIG.mouse_step:0); 
+            else if ( CONFIG.key_arrows == ARROW_CONFIG_SLOW_KEY )
+            {
+                SERIAL.print("writing scancode %x\n\r", myputter.m_cur_map[row][col].p1 );
+                KEY.write_scancode( myputter.m_cur_map[row][col].p1 );
+            }
+            else 
+            {
+                SERIAL.print("writing fast mouse scancode %x\n\r", myputter.m_cur_map[row][col].p2 );
+                KEY.write_scancode( myputter.m_cur_map[row][col].p2 );
+            }
+            break;
+        case KA_MOUSE_DOWN:
+            MOUSE.set_dir( NP_MOUSE_DOWN, (event == EVENT_KEYPAD_DOWN)?CONFIG.mouse_step:0); 
+            break;
+        case KA_REPORT_KEY:
+            SERIAL.print("# report %s : %d,%d = %c\n\r", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, myputter.m_cur_map[row][col].p1 );
+            break;
+        case KA_MOUSE_LT_CLICK:
+            MOUSE.click( MB_LEFT, event );
+            break;
+        case KA_MOUSE_MID_CLICK:
+            MOUSE.click( MB_MIDDLE, event );
+            break;
+        case KA_MOUSE_RT_CLICK:
+            MOUSE.click( MB_RIGHT, event );
+            break;
+        case KA_MOUSE_STEP:
+            if ( event == EVENT_KEYPAD_UP )
+            {
+                CONFIG.mouse_step = CONFIG.mouse_step << 1;
+                if ( CONFIG.mouse_step >= MAX_MOUSE_STEP ) CONFIG.mouse_step = 1;
+            }
+            break;
+        default:
+            SERIAL.print("ERROR: unknown event %d in navputter_keypad::press() %s %d\n", event, __FILE__, __LINE__ );
+                break;
+    }
+}
+
+void navputter_keypad_class::poll(void)
+{
+    switch( m_keypad_state )
+    {
+        case KP_SET_COLS:
+//                PORTD &= 0xf0;  // set low nibble to zero
+//                PORTD &= 0xf0;
+            PORTD =~ (1<<m_col);
+            m_keypad_state = KP_WAIT;
+            m_until = global_ticks + SETTLE_KEY_BOUNCE;
+            m_next_state = KP_READ_ROWS;
+            break;
+
+        case KP_WAIT:
+            if ( global_ticks < m_until ) return;
+            m_keypad_state = m_next_state;
+            break;
+
+        case KP_READ_ROWS:
+            m_cur_rows = 
+                READ_PIN_BIT_INTO( 0, PINB, KEYPAD_BIT_B0 ) |
+                READ_PIN_BIT_INTO( 1, PINB, KEYPAD_BIT_B1 ) |
+                READ_PIN_BIT_INTO( 2, PINB, KEYPAD_BIT_B2 ) |
+                READ_PIN_BIT_INTO( 3, PINB, KEYPAD_BIT_B3 );
+
+            myputter.m_keystate[m_col] = m_cur_rows;
+            m_keypad_state =KP_SET_COLS;
+            m_col++;
+            if ( m_col >= CONFIG.cols ) 
+            {
+                m_col=0;
+                trigger();
+            }
+            break;
+        default:
+            SERIAL.print("puke on default switch %s %d\n", __FILE__, __LINE__ );
+            break;
+    }
+}
+
+void navputter_keypad_class::begin(void)
+{
+        m_keypad_state = KP_SET_COLS;
+        m_next_state=0xff;
+        m_col=0;
+        m_until = 0;
+        m_cur_rows = 0;
+        memcpy( myputter.m_last_keystate, myputter.m_keystate, CONFIG.cols );
+        DDRD |= 0x0f;
+        DDRB = ~((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
+        PORTB |= ((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
+        init_keys();
+}
+
+void navputter_keypad_class::trigger()
+{
+		uint8_t col;
+		uint8_t row;
+        for ( col=0; col< CONFIG.cols; col++ )
+        {
+            if ( myputter.m_keystate[col] != myputter.m_last_keystate[col] )
+            {
+				for ( row=0; row< CONFIG.rows; row++ )
+				{
+					if ( myputter.m_keystate[col] & (1<<row) )
+					{
+						if ( myputter.m_keypress[row][col]  != EVENT_KEYPAD_UP)
+						{
+							press( EVENT_KEYPAD_UP, row, col );
+						}
+						myputter.m_keypress[row][col] = EVENT_KEYPAD_UP; 
+					}
+					else
+					{
+						if ( myputter.m_keypress[row][col] != EVENT_KEYPAD_DOWN )
+						{
+							press( EVENT_KEYPAD_DOWN, row, col);
+						}
+						myputter.m_keypress[row][col] = EVENT_KEYPAD_DOWN; 
+					}
+				 }
+            }
+            myputter.m_last_keystate[col] = myputter.m_keystate[col]; 
+        }
+}
+
+
+void navputter_eeprom_class::init(void)
+{
+    eeprom_header_t hdr={0};
+    eeprom_header_t hdr_default ={0};
+    read((void *)&hdr, sizeof( hdr ));
+
+#define _ED_( c, _field_, t, _default_, m, mx, fmt, fnunc, str ) hdr_default._field_ = _default_;
+    _EEPROM_DESC_
+#undef _ED_    
+
+    if ( hdr_default.version != hdr.version )
+    {
+        memcpy( (void *)&CONFIG, (void *)&hdr_default, sizeof( hdr_default ) );
+        write((void *)&CONFIG, sizeof(eeprom_layout_t));
+        SERIAL.print("wrote default settings to eeprom. hdrversion=%x, hdr_default=%x\n", hdr.version, hdr_default.version);
+    }
+    else
+    {
+        memcpy( (void *)&CONFIG, (void *)&hdr, sizeof( hdr_default ) );
+        SERIAL.print("read version %x from eeprom\n", hdr.version );
     }
 }
 

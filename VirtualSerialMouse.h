@@ -36,6 +36,7 @@
 #ifndef _VIRTUALSERIAL_MOUSE_H_
 #define _VIRTUALSERIAL_MOUSE_H_
 
+
 	/* Includes: */
 		#include <avr/io.h>
 		#include <avr/wdt.h>
@@ -67,8 +68,11 @@
 		                                          const uint8_t ReportType,
 		                                          const void* ReportData,
 		                                          const uint16_t ReportSize);
-        void push_key( uint8_t key, uint8_t mod );
+        void push_key( uint16_t keypair );
         USB_ClassInfo_CDC_Device_t *get_serial_cdc_interface(void);
 //void lufa_main_loop(void);
-#endif
 
+#define CREATE_KEYPAIR( pair, key, mod ) pair=mod<<8|key
+#define  CONVERT_KEYPAIR( pair, key, mod ) mod = (pair & 0xff00) >> 8; key = (pair & 0x00ff)
+ 
+#endif
