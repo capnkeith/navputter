@@ -172,6 +172,10 @@ void cmd_mapf( FILE *fp, char *str );
 void cmd_maps( FILE *fp, char *str );
 void cmd_mapm( FILE *fp, char *str );
 
+
+
+#define KA_TO_NP_MOUSE_DIR( ka ) ((ka)-KA_MOUSE_UP)
+
 enum key_actions
 {
     KA_NO_ACTION  = 0,          /* do nothing on keypress      */

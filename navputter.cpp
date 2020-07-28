@@ -110,14 +110,20 @@ key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 #define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                            /* ctrl r is route */
 #define COLOR_KEY          {KA_KEY_SCANCODE_ACTION, SCANCODE(HID_KEYBOARD_MODIFIER_LEFTALT,  HID_KEYBOARD_SC_C)}                            /* alt C is color change */
 #define MOB_KEY            {KA_KEY_SCANCODE_ACTION, SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_SPACE)}                        /* mob is ctrl space */ 
-#define TOGGLE_KEY_ARROWS  {KA_SPECIAL_ACTION, SA_TOGGLE_KEY_ARROWS}
-#define MOUSE_UP           {KA_MOUSE_UP, SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_UP_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_UP_ARROW)}  
+#define TOGGLE_KEY_ARROWS  {KA_SPECIAL_ACTION, SA_TOGGLE_KEY_ARROWS}                                                                        /* togger mouse, slow key, fast key */
+
+/* these mouse moves have 2 additional arguments, a slow key scancode, and a fast key scancodes used in the key arrow modes instead of mouse moves.
+   so, MOUSE_UP will be a mouse action in key_arrow mode 0, an ALT up arrow in key_arrow mode 1 and an up arrow in key mode 2.                      */ 
+#define MOUSE_UP           {KA_MOUSE_UP,    SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_UP_ARROW ),    SCANCODE( 0,HID_KEYBOARD_SC_UP_ARROW)}  
+#define MOUSE_LEFT         {KA_MOUSE_LEFT,  SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_LEFT_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
+#define MOUSE_RIGHT        {KA_MOUSE_RIGHT, SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
+#define MOUSE_DOWN         {KA_MOUSE_DOWN,  SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_DOWN_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_DOWN_ARROW)}  
 
 key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
         { ZOOM_IN_KEY,            MOUSE_UP,             ZOOM_OUT_KEY,               FOLLOW_KEY },
-        {{KA_MOUSE_LEFT,'4'},     {KA_MOUSE_STEP, '5'}, {KA_MOUSE_RIGHT,'6'},       ROUTE_KEY  },
-        { TOGGLE_KEY_ARROWS,      {KA_MOUSE_DOWN,'8'},  {KA_REPORT_KEY,'9'},        COLOR_KEY  },
+        { MOUSE_LEFT,             {KA_MOUSE_STEP, '5'}, MOUSE_RIGHT,                ROUTE_KEY  },
+        { TOGGLE_KEY_ARROWS,      MOUSE_DOWN,           {KA_REPORT_KEY,'9'},        COLOR_KEY  },
         {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'},  {KA_MOUSE_RT_CLICK,'#'},    MOB_KEY    }
 };
 
@@ -269,6 +275,9 @@ int navputter_serial_class::read(void)
     return i;
 }
 
+
+
+
 void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
 {
     row = (CONFIG.flip_rows)?CONFIG.rows - row - 1:row;
@@ -307,27 +316,23 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             }
         break;
         case KA_MOUSE_LEFT:
-            MOUSE.set_dir( NP_MOUSE_LEFT, (event == EVENT_KEYPAD_DOWN )?CONFIG.mouse_step:0 ); 
-            break;
         case KA_MOUSE_RIGHT:
-            MOUSE.set_dir( NP_MOUSE_RIGHT, (event == EVENT_KEYPAD_DOWN)?CONFIG.mouse_step:0); 
-            break;
         case KA_MOUSE_UP:
+        case KA_MOUSE_DOWN:
             if ( CONFIG.key_arrows == ARROW_CONFIG_MOUSE )
-                MOUSE.set_dir( NP_MOUSE_UP, (event == EVENT_KEYPAD_DOWN)?CONFIG.mouse_step:0); 
+            { 
+                MOUSE.set_dir( KA_TO_NP_MOUSE_DIR(action), (event == EVENT_KEYPAD_DOWN )?CONFIG.mouse_step:0 ); 
+            }
             else if ( CONFIG.key_arrows == ARROW_CONFIG_SLOW_KEY )
             {
                 SERIAL.print("writing scancode %x\n\r", myputter.m_cur_map[row][col].p1 );
                 KEY.write_scancode( myputter.m_cur_map[row][col].p1 );
             }
-            else 
+            else
             {
-                SERIAL.print("writing fast mouse scancode %x\n\r", myputter.m_cur_map[row][col].p2 );
+                SERIAL.print("writing scancode %x\n\r", myputter.m_cur_map[row][col].p2 );
                 KEY.write_scancode( myputter.m_cur_map[row][col].p2 );
             }
-            break;
-        case KA_MOUSE_DOWN:
-            MOUSE.set_dir( NP_MOUSE_DOWN, (event == EVENT_KEYPAD_DOWN)?CONFIG.mouse_step:0); 
             break;
         case KA_REPORT_KEY:
             SERIAL.print("# report %s : %d,%d = %c\n\r", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, myputter.m_cur_map[row][col].p1 );
