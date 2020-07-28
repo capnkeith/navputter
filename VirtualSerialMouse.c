@@ -51,6 +51,7 @@ uint16_t out_key_buffer[ MAX_KEY_BUFFER_SZ ];   /* key presses going out the USB
 volatile uint8_t out_key_head = 0;              /* head index for the keypress buffer */
 volatile uint8_t out_key_tail = 0;              /* tail index for the keypress buffer */
 
+extern void ser_print( const char *str, ... );
 /*
  * pop function for the vserial driver to retrieve the next keypress. Returns 0 if no more
  * keys queued ortherwise key code in high order 2 bytes, modifier in low two bytes
@@ -68,18 +69,17 @@ uint16_t pop_key(void)
  * simple circular buffer for holding keypresses until they can be transmitted
  * out the usb. Push the key and modifier. Key goes in high byte, modifiers in the low order byte.
  */
-void push_key( uint8_t key, uint8_t mod )
+void push_key( uint16_t keypair )
 {
     if ( out_key_head == MAX_KEY_BUFFER_SZ )
     {
         if ( out_key_tail == 0 )
         {
-            printf("key buffer full");
             return;  
         }
         else
         {
-            out_key_buffer[out_key_head] = (uint16_t)key << 8 | mod;
+            out_key_buffer[out_key_head] = keypair;
             out_key_head = 0;
         }
     }
@@ -87,12 +87,11 @@ void push_key( uint8_t key, uint8_t mod )
     {
         if ( out_key_head + 1 == out_key_tail )
         {
-            printf("key buffer full\n");
             return;
         }
         else
         {
-            out_key_buffer[out_key_head] = (uint16_t)key << 8 | mod;
+            out_key_buffer[out_key_head] = keypair;
             out_key_head = ( out_key_head == MAX_KEY_BUFFER_SZ ) ? 0 : out_key_head+1;
         }
     }
@@ -240,17 +239,28 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
                                          void* ReportData,
                                          uint16_t* const ReportSize)
 {
-    static uint8_t mod = 0;
+    uint8_t keypair = 0;
 
     USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
     if ( key_state == SEND_KEY )
     {
-        uint16_t key = pop_key();
-        key_state = CLEAR_KEY;
-        if ( key )
+        static uint16_t fake=0;
+        uint16_t keypair = pop_key();
+#if 0
+        if ( fake < 0x100 )
         {
-            mod = KeyboardReport->Modifier = key & 0x00ff;
-		    KeyboardReport->KeyCode[0] = (key & 0xff00) >> 8;
+            fake++;
+            keypair = fake;
+        }
+#endif
+        key_state = CLEAR_KEY;
+        if ( keypair )
+        {
+            uint8_t mod = 0;
+            uint8_t key = 0;
+            CONVERT_KEYPAIR( keypair, key, mod );
+            KeyboardReport->Modifier =mod;
+		    KeyboardReport->KeyCode[0] = key;
         }
         else
         { 
@@ -263,7 +273,6 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 		KeyboardReport->KeyCode[0] = 0;
         key_state = SEND_KEY;
     }
-    KeyboardReport->Modifier = mod;
 	*ReportID   = HID_REPORTID_KeyboardReport;
 	*ReportSize = sizeof(USB_KeyboardReport_Data_t);
     return false;
@@ -272,22 +281,6 @@ PROCESS_MOUSE:
     {
 		USB_MouseReport_Data_t* MouseReport = (USB_MouseReport_Data_t*)ReportData;
         get_mouse_status( &MouseReport->Y, &MouseReport->X, &MouseReport->Button );        
-//        if ( global_mouse_dir & MOUSE_DIR_UP )
-//		  MouseReport->Y = -1;
-#if 0
-        if ( global_mouse_dir & MOUSE_DIR_DOWN )
-		  MouseReport->Y = 1;
-        if ( global_mouse_dir & MOUSE_DIR_LEFT )
-		  MouseReport->X = -1;
-        if ( global_mouse_dir & MOUSE_DIR_RIGHT )
-		  MouseReport->X = 1;
-
-        if ( global_mouse_dir & MOUSE_LT_CLICK )
-		  MouseReport->Button |= (1 << 0);
-
-        if ( global_mouse_dir & MOUSE_RT_CLICK )
-		  MouseReport->Button |= (1 << 1);
-#endif
 		*ReportID   = HID_REPORTID_MouseReport;
 		*ReportSize = sizeof(USB_MouseReport_Data_t);
 		return true;

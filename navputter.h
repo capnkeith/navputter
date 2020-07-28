@@ -7,8 +7,24 @@
 extern "C" 
 {
 #include "VirtualSerialMouse.h"
+void ser_print( const char *str, ... );
 }
 extern volatile uint32_t global_ticks;
+
+enum key_arrow_states
+{
+    ARROW_CONFIG_MOUSE = 0,
+    ARROW_CONFIG_SLOW_KEY,
+    ARROW_CONFIG_FAST_KEY,
+};
+
+#define MAX_KEY_ARROW_STATE 2   /
+enum special_actions
+{
+    SA_TOGGLE_KEY_ARROWS = 0
+};
+
+#define MAX_MOUSE_STEP 64
 
 #define KEYMAP_LIST\
     _KM_( 'a', 0, HID_KEYBOARD_SC_A )\
@@ -37,32 +53,32 @@ extern volatile uint32_t global_ticks;
     _KM_( 'x', 0, HID_KEYBOARD_SC_X )\
     _KM_( 'y', 0, HID_KEYBOARD_SC_Y )\
     _KM_( 'z', 0, HID_KEYBOARD_SC_Z )\
-    _KM_( 'A', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_A )\
-    _KM_( 'B', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_B )\
-    _KM_( 'C', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_C )\
-    _KM_( 'D', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_D )\
-    _KM_( 'E', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_E )\
-    _KM_( 'F', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_F )\
-    _KM_( 'G', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_G )\
-    _KM_( 'H', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_H )\
-    _KM_( 'I', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_I )\
-    _KM_( 'J', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_J )\
-    _KM_( 'K', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_K )\
-    _KM_( 'L', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_L )\
-    _KM_( 'M', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_M )\
-    _KM_( 'N', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_N )\
-    _KM_( 'O', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_O )\
-    _KM_( 'P', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_P )\
-    _KM_( 'Q', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_Q )\
-    _KM_( 'R', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_R )\
-    _KM_( 'S', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_S )\
-    _KM_( 'T', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_T )\
-    _KM_( 'U', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_U )\
-    _KM_( 'V', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_V )\
-    _KM_( 'W', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_W )\
-    _KM_( 'X', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_X )\
-    _KM_( 'Y', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_Y )\
-    _KM_( 'Z', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_Z )\
+    _KM_( 'A', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_A )\
+    _KM_( 'B', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_B )\
+    _KM_( 'C', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_C )\
+    _KM_( 'D', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_D )\
+    _KM_( 'E', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_E )\
+    _KM_( 'F', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_F )\
+    _KM_( 'G', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_G )\
+    _KM_( 'H', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_H )\
+    _KM_( 'I', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_I )\
+    _KM_( 'J', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_J )\
+    _KM_( 'K', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_K )\
+    _KM_( 'L', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_L )\
+    _KM_( 'M', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_M )\
+    _KM_( 'N', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_N )\
+    _KM_( 'O', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_O )\
+    _KM_( 'P', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_P )\
+    _KM_( 'Q', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_Q )\
+    _KM_( 'R', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_R )\
+    _KM_( 'S', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_S )\
+    _KM_( 'T', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_T )\
+    _KM_( 'U', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_U )\
+    _KM_( 'V', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_V )\
+    _KM_( 'W', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_W )\
+    _KM_( 'X', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_X )\
+    _KM_( 'Y', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_Y )\
+    _KM_( 'Z', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_Z )\
     _KM_( '1', 0,                       HID_KEYBOARD_SC_1_AND_EXCLAMATION )\
     _KM_( '2', 0,                       HID_KEYBOARD_SC_2_AND_AT )\
     _KM_( '3', 0,                       HID_KEYBOARD_SC_3_AND_HASHMARK )\
@@ -73,20 +89,20 @@ extern volatile uint32_t global_ticks;
     _KM_( '8', 0,                       HID_KEYBOARD_SC_8_AND_ASTERISK )\
     _KM_( '9', 0,                       HID_KEYBOARD_SC_9_AND_OPENING_PARENTHESIS )\
     _KM_( '0', 0,                       HID_KEYBOARD_SC_0_AND_CLOSING_PARENTHESIS )\
-    _KM_( '!', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_1_AND_EXCLAMATION )\
-    _KM_( '@', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_2_AND_AT )\
-    _KM_( '#', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_3_AND_HASHMARK )\
-    _KM_( '$', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_4_AND_DOLLAR )\
-    _KM_( '%', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_5_AND_PERCENTAGE )\
-    _KM_( '^', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_6_AND_CARET )\
-    _KM_( '&', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_7_AND_AMPERSAND )\
-    _KM_( '*', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_8_AND_ASTERISK )\
-    _KM_( '(', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_9_AND_OPENING_PARENTHESIS )\
-    _KM_( ')', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_0_AND_CLOSING_PARENTHESIS )\
-    _KM_( '+', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_EQUAL_AND_PLUS)\
+    _KM_( '!', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_1_AND_EXCLAMATION )\
+    _KM_( '@', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_2_AND_AT )\
+    _KM_( '#', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_3_AND_HASHMARK )\
+    _KM_( '$', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_4_AND_DOLLAR )\
+    _KM_( '%', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_5_AND_PERCENTAGE )\
+    _KM_( '^', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_6_AND_CARET )\
+    _KM_( '&', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_7_AND_AMPERSAND )\
+    _KM_( '*', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_8_AND_ASTERISK )\
+    _KM_( '(', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_9_AND_OPENING_PARENTHESIS )\
+    _KM_( ')', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_0_AND_CLOSING_PARENTHESIS )\
+    _KM_( '+', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_EQUAL_AND_PLUS)\
     _KM_( '=', 0,                       HID_KEYBOARD_SC_EQUAL_AND_PLUS)\
     _KM_( '-', 0,                       HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE )\
-    _KM_( '_', HID_KEYBOARD_SC_LEFT_SHIFT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE )\
+    _KM_( '_', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE )\
 
 #undef _KM_
 
@@ -107,6 +123,7 @@ extern volatile uint32_t global_ticks;
     _ED_( 'x', screen_x,     uint16_t,    1920,          2, 7680,           "%-8d",    NULL,              "Total keymaps in memory." )\
     _ED_( 'y', screen_y,     uint16_t,    1080,          2, 3240,           "%-8d",    NULL,              "Total keymaps in memory." )\
     _ED_( 'm', screen_mac,   uint8_t,     1,             0, 1,              "%-8d",    NULL,              "Mac Mouse." )\
+    _ED_( 'K', key_arrows,   uint8_t,     0,             0, 1,              "%-8d",    NULL,              "Keyboard arrows by default." )\
 // endo fo _EEPROM_DESC_ list
 
 
@@ -130,10 +147,10 @@ typedef struct eeprom_layout
 
 typedef struct key_map
 {
-    uint8_t     action;
-    uint8_t     p1; 
-    uint8_t     p2;
-    uint8_t     p3;
+    uint16_t     action;
+    uint16_t     p1; 
+    uint16_t     p2;
+    uint16_t     p3;
 }key_map_t;
 
 void poll_buttons(void);
@@ -151,6 +168,8 @@ enum key_actions
 {
     KA_NO_ACTION  = 0,          /* do nothing on keypress      */
     KA_KEY_ACTION,              /* inject a keystroke          */
+    KA_KEY_SCANCODE_ACTION,     /* inject a keystroke via scan codes */
+    KA_SPECIAL_ACTION,          /* custom action */
     KA_MOUSE_UP,                /* move mouse up               */
     KA_MOUSE_DOWN,              /* move mouse down             */
     KA_MOUSE_LEFT,              /* move mouse left             */
@@ -191,8 +210,7 @@ enum keypad_states      /* keypad states for reading each row */
 
 enum time_constants
 { 
-    SETTLE_KEY_BOUNCE = 20,     // milliseconds
-    KEY_POLL_INTERVAL = 10,     // milliseconds
+    SETTLE_KEY_BOUNCE = 10,     // milliseconds
 };
 
 
@@ -219,26 +237,6 @@ struct key_code
 {
     uint8_t modifier;
     uint8_t key;
-};
-
-class usb_keyboard_class
-{
-    public:
-        void begin(void) 
-        {
-            memset( m_key_codes,0, sizeof( m_key_codes ) );
-#define _KM_( _char_, _modifier_, _key_ ) m_key_codes[_char_].key = _key_; m_key_codes[_char_].modifier = _modifier_;
-            KEYMAP_LIST
-#undef _KM_
-        }
-        void end(void) {}
-        size_t write( uint8_t v )         
-        {
-            push_key( (uint8_t)m_key_codes[v].key, (uint8_t)m_key_codes[v].modifier );                
-            return 1;
-        }
-    private:
-        struct key_code m_key_codes[0xff];
 };
 
 class lufa_mouse_class
@@ -335,8 +333,6 @@ class usb_serial_class
             return fgetc(m_stream);
         }
 };
-extern usb_keyboard_class          mykey;
-
 
 class navputter_watchdog_class 
 {
@@ -360,7 +356,6 @@ class navputter_watchdog_class
 };
 extern navputter_watchdog_class    mydog; 
 
-
 class navputter_serial_class : public usb_serial_class
 {
     public:
@@ -381,9 +376,13 @@ class navputter_serial_class : public usb_serial_class
             va_end (args);
         }
 };
-extern navputter_serial_class      myser;
 
 extern "C" void start_timer(uint32_t milliseconds);
+extern navputter_serial_class      myser;
+
+
+
+
 
 class navputter_timer_class
 {
@@ -422,6 +421,33 @@ private:
 
 
 
+class usb_keyboard_class
+{
+    public:
+        void begin(void) 
+        {
+            memset( m_key_codes,0, sizeof( m_key_codes ) );
+#define _KM_( _char_, _modifier_, _key_ ) m_key_codes[_char_].key = _key_; m_key_codes[_char_].modifier = _modifier_;
+            KEYMAP_LIST
+#undef _KM_
+        }
+        void end(void) {}
+        size_t write( uint8_t v )         
+        {
+            uint16_t keypair;
+            CREATE_KEYPAIR( keypair, m_key_codes[v].key, m_key_codes[v].modifier );
+            push_key( keypair );
+            return 1;
+        }
+        void write_scancode( uint16_t k1 )
+        {
+            if ( k1 ) push_key( k1 );
+        }
+
+    private:
+        struct key_code m_key_codes[0xff];
+};
+extern usb_keyboard_class          mykey;
 class navputter_keypad
 {
     enum
@@ -452,9 +478,31 @@ public:
         col = (global_config.config.flip_cols)?global_config.config.cols - col - 1:col;
 
         uint8_t action = global_config.cur_map[row][col].action;
-        myser.print(" %s, row=%d, col=%d\r\n", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col );
         switch(action)
         {
+            case KA_KEY_SCANCODE_ACTION:
+                if ( event == EVENT_KEYPAD_DOWN )
+                {
+                    mykey.write_scancode( global_config.cur_map[row][col].p1 );
+                    mykey.write_scancode( global_config.cur_map[row][col].p2 );
+                    mykey.write_scancode( global_config.cur_map[row][col].p3 );
+                }
+            break;
+            case KA_SPECIAL_ACTION:
+                if ( event == EVENT_KEYPAD_DOWN )
+                {
+                    switch( global_config.cur_map[row][col].p1 )
+                    {
+                        case SA_TOGGLE_KEY_ARROWS:
+                            global_config.config.key_arrows = (global_config.config.key_arrows < ARROW_CONFIG_FAST_KEY ) ? global_config.config.key_arrows + 1 : 0;
+                            myser.print("key arrows now %d\r\n", global_config.config.key_arrows );
+                            break;
+                        default:
+                            myser.print("unknown special action %d at %d,%d\n", global_config.cur_map[row][col].p1, row, col );
+                            break;
+                    }
+                }
+                break;
             case KA_KEY_ACTION:
                 if ( event == EVENT_KEYPAD_DOWN )
                 {
@@ -468,7 +516,18 @@ public:
                 mymouse.set_dir( NP_MOUSE_RIGHT, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
                 break;
             case KA_MOUSE_UP:
-                mymouse.set_dir( NP_MOUSE_UP, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
+                if ( global_config.config.key_arrows == ARROW_CONFIG_MOUSE )
+                    mymouse.set_dir( NP_MOUSE_UP, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
+                else if ( global_config.config.key_arrows == ARROW_CONFIG_SLOW_KEY )
+                {
+                    myser.print("writing scancode %x\n\r", global_config.cur_map[row][col].p1 );
+                    mykey.write_scancode( global_config.cur_map[row][col].p1 );
+                }
+                else 
+                {
+                    myser.print("writing fast mouse scancode %x\n\r", global_config.cur_map[row][col].p2 );
+                    mykey.write_scancode( global_config.cur_map[row][col].p2 );
+                }
                 break;
             case KA_MOUSE_DOWN:
                 mymouse.set_dir( NP_MOUSE_DOWN, (event == EVENT_KEYPAD_DOWN)?global_config.config.mouse_step:0); 
@@ -489,7 +548,7 @@ public:
                 if ( event == EVENT_KEYPAD_UP )
                 {
                     global_config.config.mouse_step = global_config.config.mouse_step << 1;
-                    if ( global_config.config.mouse_step >= 8 ) global_config.config.mouse_step = 1;
+                    if ( global_config.config.mouse_step >= MAX_MOUSE_STEP ) global_config.config.mouse_step = 1;
                 }
                 break;
             default:

@@ -92,7 +92,6 @@ void start_timer(uint32_t msecs);
 
 
 
-
 global_state_t global_config={
     {0x0100,4,4,1,1,1},              /* version 1.1, 4 rows, 4 cols, flip rows 1, flip cols 1, mouse step 1 */
 
@@ -111,12 +110,22 @@ key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
         {{KA_REPORT_KEY,'*'},     {KA_REPORT_KEY,'0'}, {KA_REPORT_KEY,'#'},     {KA_REPORT_KEY, 'D'}},
 };
 
+#define SCANCODE( mod, key ) ((((uint16_t)mod)<<8)|key)
+#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS )}               /* alt + gives slow zoom in */
+#define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)}          /* alt - gives slow zoom out */
+#define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                                       /* f2 is follow */
+#define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                            /* ctrl r is route */
+#define COLOR_KEY          {KA_KEY_SCANCODE_ACTION, SCANCODE(HID_KEYBOARD_MODIFIER_LEFTALT,  HID_KEYBOARD_SC_C)}                            /* alt C is color change */
+#define MOB_KEY            {KA_KEY_SCANCODE_ACTION, SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_SPACE)}                        /* mob is ctrl space */ 
+#define TOGGLE_KEY_ARROWS  {KA_SPECIAL_ACTION, SA_TOGGLE_KEY_ARROWS}
+#define MOUSE_UP           {KA_MOUSE_UP, SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_UP_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_UP_ARROW)}  
+
 key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
-        {{KA_KEY_ACTION,'+'}, {KA_MOUSE_UP,'2'}, {KA_KEY_ACTION,'-'}, {KA_REPORT_KEY, 'A'}},
-        {{KA_MOUSE_LEFT,'4'}, {KA_MOUSE_STEP, '5'}, {KA_MOUSE_RIGHT,'6'}, {KA_REPORT_KEY, 'B'}},
-        {{KA_REPORT_KEY,'7'}, {KA_MOUSE_DOWN,'8'}, {KA_REPORT_KEY,'9'}, {KA_REPORT_KEY, 'C'}},
-        {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'}, {KA_MOUSE_RT_CLICK,'#'}, {KA_REPORT_KEY, 'D'}},
+        { ZOOM_IN_KEY,            MOUSE_UP,             ZOOM_OUT_KEY,               FOLLOW_KEY },
+        {{KA_MOUSE_LEFT,'4'},     {KA_MOUSE_STEP, '5'}, {KA_MOUSE_RIGHT,'6'},       ROUTE_KEY  },
+        { TOGGLE_KEY_ARROWS,      {KA_MOUSE_DOWN,'8'},  {KA_REPORT_KEY,'9'},        COLOR_KEY  },
+        {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'},  {KA_MOUSE_RT_CLICK,'#'},    MOB_KEY    }
 };
 
 
@@ -125,6 +134,16 @@ extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 
 void navputter_yield(void);
 
+
+extern "C" void ser_print( const char *str, ... )
+{
+    char buffer[256];
+    va_list args;
+    va_start (args, str);
+    vsprintf (buffer, str, args);
+    myser.write(buffer);
+    va_end (args);
+}
 
 void key_up_event( int row, int col )
 {
@@ -139,7 +158,7 @@ void key_down_event( int row, int col )
 void init_keys(void)
 {
     memcpy( global_config.cur_map, base_map, sizeof( base_map ));
-//    memcpy( global_config.cur_map, temp_map, sizeof( temp_map ));
+//   memcpy( global_config.cur_map, temp_map, sizeof( temp_map ));
 }
 
 FILE *gfp=NULL;
@@ -208,6 +227,7 @@ void timer_callback(void)
     DDRB |= 1;
     PORTB = PINB ^ 1;
 //    if ( myser.available() ) myser.print("running %ld milliseconds\n\r", global_ticks);
+
 }
 
 extern "C" void SetupHardware(void);
@@ -234,7 +254,7 @@ extern "C" int main(void)
 	GlobalInterruptEnable();
     myser.begin(9600);
     mykey.begin();
-    mytimer.begin( timer_callback, 10000 );
+    mytimer.begin( timer_callback, 1000 );
     mydog.begin();
     mykeypad.begin();
     mymouse.begin();
