@@ -52,6 +52,7 @@ volatile uint8_t out_key_head = 0;              /* head index for the keypress b
 volatile uint8_t out_key_tail = 0;              /* tail index for the keypress buffer */
 
 extern void ser_print( const char *str, ... );
+extern void ser_push( uint8_t c );
 /*
  * pop function for the vserial driver to retrieve the next keypress. Returns 0 if no more
  * keys queued ortherwise key code in high order 2 bytes, modifier in low two bytes
@@ -333,7 +334,11 @@ void EVENT_CDC_Device_ControLineStateChanged(USB_ClassInfo_CDC_Device_t *const C
 void lufa_main_loop(void)
 {
 	CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
-    CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
+    uint8_t c = CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
+    if ( c != 0xff )
+    {
+        ser_push(c);
+    } 
     HID_Device_USBTask(&Device_HID_Interface);
     USB_USBTask();
 }

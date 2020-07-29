@@ -134,7 +134,12 @@ extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 void navputter_yield(void);
 
 
-extern "C" void ser_print( const char *str, ... )
+void ser_push( uint8_t c )
+{
+    SERIAL.push(c);
+}
+
+void ser_print( const char *str, ... )
 {
     char buffer[256];
     va_list args;
@@ -236,14 +241,13 @@ extern "C" void get_mouse_status( int8_t *y, int8_t *x, uint8_t *buttons )
             (MOUSE.get_buttons( MB_RIGHT )) ? (1 << LUFA_MB_BUTTON_RIGHT ) : 0;
 }
 
+
+
 extern "C" int main(void)
 {
     PUTT=&myputter;
     myputter.begin();
-
-#define _BW_(str) SERIAL.write(str"\n\r");
-    _BIG_WHALE_
-#undef _BW_
+    myputter.big_whale();
 
 	for (;;)
 	{
@@ -251,6 +255,7 @@ extern "C" int main(void)
         TIMER.poll();
         DOG.kick();
         lufa_main_loop();
+        myputter.poll();
     }
 }
 
@@ -467,6 +472,46 @@ void navputter_eeprom_class::init(void)
         memcpy( (void *)&CONFIG, (void *)&hdr, sizeof( hdr_default ) );
         SERIAL.print("read version %x from eeprom\n", hdr.version );
     }
+}
+
+
+void navputter_class::usage(void)
+{
+    SERIAL.print("Main Menu Commands:\r\n");
+#define _SC_( cmd, str, func ) SERIAL.print(" %c) - %s\n\r", (int)cmd, str );
+    _SER_CMDS_
+#undef _SC_
+   
+    SERIAL.print("\n\r\r\rPress command letter:");
+}
+
+void navputter_class::poll()
+{
+
+//    char c = SERIAL.peek();
+    uint8_t c = SERIAL.read();
+    if ( (c == 0xff) || (c == 0)) return;
+    SERIAL.print("I read %c\n\r",c);
+    switch(c)
+    {
+        case 'e' :
+            SERIAL.print("print eeprom\n\r");
+            break;
+        default:
+            usage();
+            break;
+        case 'q' :
+            big_whale();
+            break;
+    }
+} 
+    
+    
+void navputter_class::big_whale(void)
+{
+#define _BW_(str) SERIAL.write(str"\n\r");
+    _BIG_WHALE_
+#undef _BW_
 }
 
 /** Configures the board hardware and chip peripherals for the demo's functionality. */

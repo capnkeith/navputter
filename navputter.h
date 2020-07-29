@@ -14,6 +14,7 @@ extern "C"
     void SetupHardware(void); 
     void lufa_main_loop(void);
     void start_timer(uint32_t unused);
+    void ser_push( uint8_t c );
 #ifdef __cplusplus
 }
 #endif
@@ -278,6 +279,7 @@ class lufa_mouse_class
 };
 
 
+#define SERIAL_BUFFER_SIZE 16
 
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 class usb_serial_class
@@ -289,10 +291,10 @@ class usb_serial_class
         FILE *m_stream;
         void begin(long baud) 
         {
- //           USB_ClassInfo_CDC_Device_t *serial = get_serial_cdc_interface();
             CDC_Device_CreateStream(&VirtualSerial_CDC_Interface, &m_stream_obj);
             m_stream = &m_stream_obj;
             m_ready_after = global_ticks + SERIAL_STARTUP_DELAY_MS;
+            m_head = m_tail = 0;
         }
         
         bool available(void) 
@@ -304,15 +306,26 @@ class usb_serial_class
         void flush(void){}
         void clear(void){}
 
+        void push(uint8_t c)
+        {
+            if (((m_head + 1) == m_tail ) || (((m_head+1) == SERIAL_BUFFER_SIZE)&(m_tail==0)))
+                return;
+            m_serial_buffer[m_head] = c;
+            m_head = ((m_head+1)==SERIAL_BUFFER_SIZE)?0:m_head+1;
+        }
+
+        uint8_t pop(void)
+        {
+            if ( m_head == m_tail ) return 0xff;
+            uint8_t c = m_serial_buffer[m_tail];
+            m_tail = ((m_tail+1)==SERIAL_BUFFER_SIZE)?0:m_tail+1;
+            return c;
+        }
+
         uint8_t peek(void)
         {
-            char c = getc(m_stream);
-            if ( c != EOF )
-            {
-                ungetc(c, m_stream);
-                return c;
-            }
-            return 0;
+            if ( m_head == m_tail ) return 0xff;
+            return m_serial_buffer[m_tail];
         }
 
         size_t write(uint8_t c) 
@@ -331,8 +344,11 @@ class usb_serial_class
         } 
         int virtual read(void) 
         {
-            return fgetc(m_stream);
+            return pop();
         }
+        uint8_t m_serial_buffer[ SERIAL_BUFFER_SIZE ];
+        uint8_t m_head;
+        uint8_t m_tail;
 };
 
 class navputter_watchdog_class 
@@ -539,6 +555,10 @@ public:
     {
         memcpy( m_cur_map, map, size );
     }
+
+    void poll(void);
+    void usage(void);
+    void big_whale(void);
 
     lufa_mouse_class            m_mouse;
     navputter_timer_class       m_timer;
