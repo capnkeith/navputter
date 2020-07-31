@@ -35,90 +35,16 @@ enum special_actions
 
 #define MAX_MOUSE_STEP 64
 
-#define KEYMAP_LIST\
-    _KM_( 'a', 0, HID_KEYBOARD_SC_A )\
-    _KM_( 'b', 0, HID_KEYBOARD_SC_B )\
-    _KM_( 'c', 0, HID_KEYBOARD_SC_C )\
-    _KM_( 'd', 0, HID_KEYBOARD_SC_D )\
-    _KM_( 'e', 0, HID_KEYBOARD_SC_E )\
-    _KM_( 'f', 0, HID_KEYBOARD_SC_F )\
-    _KM_( 'g', 0, HID_KEYBOARD_SC_G )\
-    _KM_( 'h', 0, HID_KEYBOARD_SC_H )\
-    _KM_( 'i', 0, HID_KEYBOARD_SC_I )\
-    _KM_( 'j', 0, HID_KEYBOARD_SC_J )\
-    _KM_( 'k', 0, HID_KEYBOARD_SC_K )\
-    _KM_( 'l', 0, HID_KEYBOARD_SC_L )\
-    _KM_( 'm', 0, HID_KEYBOARD_SC_M )\
-    _KM_( 'n', 0, HID_KEYBOARD_SC_N )\
-    _KM_( 'o', 0, HID_KEYBOARD_SC_O )\
-    _KM_( 'p', 0, HID_KEYBOARD_SC_P )\
-    _KM_( 'q', 0, HID_KEYBOARD_SC_Q )\
-    _KM_( 'r', 0, HID_KEYBOARD_SC_R )\
-    _KM_( 's', 0, HID_KEYBOARD_SC_S )\
-    _KM_( 't', 0, HID_KEYBOARD_SC_T )\
-    _KM_( 'u', 0, HID_KEYBOARD_SC_U )\
-    _KM_( 'v', 0, HID_KEYBOARD_SC_V )\
-    _KM_( 'w', 0, HID_KEYBOARD_SC_W )\
-    _KM_( 'x', 0, HID_KEYBOARD_SC_X )\
-    _KM_( 'y', 0, HID_KEYBOARD_SC_Y )\
-    _KM_( 'z', 0, HID_KEYBOARD_SC_Z )\
-    _KM_( 'A', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_A )\
-    _KM_( 'B', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_B )\
-    _KM_( 'C', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_C )\
-    _KM_( 'D', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_D )\
-    _KM_( 'E', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_E )\
-    _KM_( 'F', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_F )\
-    _KM_( 'G', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_G )\
-    _KM_( 'H', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_H )\
-    _KM_( 'I', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_I )\
-    _KM_( 'J', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_J )\
-    _KM_( 'K', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_K )\
-    _KM_( 'L', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_L )\
-    _KM_( 'M', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_M )\
-    _KM_( 'N', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_N )\
-    _KM_( 'O', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_O )\
-    _KM_( 'P', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_P )\
-    _KM_( 'Q', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_Q )\
-    _KM_( 'R', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_R )\
-    _KM_( 'S', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_S )\
-    _KM_( 'T', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_T )\
-    _KM_( 'U', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_U )\
-    _KM_( 'V', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_V )\
-    _KM_( 'W', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_W )\
-    _KM_( 'X', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_X )\
-    _KM_( 'Y', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_Y )\
-    _KM_( 'Z', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_Z )\
-    _KM_( '1', 0,                       HID_KEYBOARD_SC_1_AND_EXCLAMATION )\
-    _KM_( '2', 0,                       HID_KEYBOARD_SC_2_AND_AT )\
-    _KM_( '3', 0,                       HID_KEYBOARD_SC_3_AND_HASHMARK )\
-    _KM_( '4', 0,                       HID_KEYBOARD_SC_4_AND_DOLLAR )\
-    _KM_( '5', 0,                       HID_KEYBOARD_SC_5_AND_PERCENTAGE )\
-    _KM_( '6', 0,                       HID_KEYBOARD_SC_6_AND_CARET )\
-    _KM_( '7', 0,                       HID_KEYBOARD_SC_7_AND_AMPERSAND )\
-    _KM_( '8', 0,                       HID_KEYBOARD_SC_8_AND_ASTERISK )\
-    _KM_( '9', 0,                       HID_KEYBOARD_SC_9_AND_OPENING_PARENTHESIS )\
-    _KM_( '0', 0,                       HID_KEYBOARD_SC_0_AND_CLOSING_PARENTHESIS )\
-    _KM_( '!', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_1_AND_EXCLAMATION )\
-    _KM_( '@', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_2_AND_AT )\
-    _KM_( '#', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_3_AND_HASHMARK )\
-    _KM_( '$', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_4_AND_DOLLAR )\
-    _KM_( '%', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_5_AND_PERCENTAGE )\
-    _KM_( '^', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_6_AND_CARET )\
-    _KM_( '&', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_7_AND_AMPERSAND )\
-    _KM_( '*', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_8_AND_ASTERISK )\
-    _KM_( '(', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_9_AND_OPENING_PARENTHESIS )\
-    _KM_( ')', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_0_AND_CLOSING_PARENTHESIS )\
-    _KM_( '+', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_EQUAL_AND_PLUS)\
-    _KM_( '=', 0,                       HID_KEYBOARD_SC_EQUAL_AND_PLUS)\
-    _KM_( '-', 0,                       HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE )\
-    _KM_( '_', HID_KEYBOARD_MODIFIER_LEFTSHIFT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE )\
-
 #undef _KM_
 
 #define SERIAL_STARTUP_DELAY_MS 4000
 
 #define MAX_KEY_ROWS        4
 #define MAX_KEY_COLS        4
+
+
+
+
 
 /* keep the header to 16 bytes */
 #define _EEPROM_DESC_\
@@ -159,7 +85,6 @@ typedef struct key_map
     uint16_t     action;
     uint16_t     p1; 
     uint16_t     p2;
-    uint16_t     p3;
 }key_map_t;
 
 void poll_buttons(void);
@@ -435,19 +360,9 @@ class usb_keyboard_class
     public:
         void begin(void) 
         {
-            memset( m_key_codes,0, sizeof( m_key_codes ) );
-#define _KM_( _char_, _modifier_, _key_ ) m_key_codes[_char_].key = _key_; m_key_codes[_char_].modifier = _modifier_;
-            KEYMAP_LIST
-#undef _KM_
         }
         void end(void) {}
-        size_t write( uint8_t v )         
-        {
-            uint16_t keypair;
-            CREATE_KEYPAIR( keypair, m_key_codes[v].key, m_key_codes[v].modifier );
-            push_key( keypair );
-            return 1;
-        }
+
         void write_scancode( uint16_t k1 )
         {
             if ( k1 ) push_key( k1 );
@@ -527,6 +442,138 @@ class navputter_eeprom_class : public generic_eeprom_class
 
 
 
+
+
+    
+class navputter_menu_base_class
+{
+public:
+    virtual void begin(void);
+    virtual void end(void);
+    virtual void poll(void);
+    virtual void usage(void);
+
+    uint8_t get_state( void )
+    {
+        return m_state;
+    }    
+    void set_state( uint8_t state )
+    {
+        m_state = state;
+    }
+private:
+    uint8_t m_state;
+
+};
+
+
+enum
+{
+    READ_COMMAND = 0,
+    READ_INT,   
+    SET_VALUE,
+    READ_PORT,
+    CALL_FUNC,
+    READ_PARAM,
+    CONVERT_VALUE
+};
+
+class navputter_main_menu_class : public navputter_menu_base_class
+{
+public:
+    virtual void begin(void);
+    virtual void end(void);
+    virtual void poll(void);
+    virtual void usage(void);
+
+    void serial_keypad(void);
+    void serial_gpio(void);
+    void handle_eeprom(void);
+    void write_eeprom(void);
+};
+
+
+class navputter_eeprom_menu_class : public navputter_menu_base_class
+{
+public:
+    virtual void begin(void);
+    virtual void end(void);
+    virtual void poll(void);
+    virtual void usage(void);
+
+
+private:
+    bool    m_dirty;
+    int     m_position;    
+    uint8_t m_command;
+#define MAX_INT_SIZE 8 
+    uint8_t m_int_value[ MAX_INT_SIZE ];
+};
+
+#define GPIO_MENU\
+    _GM_( 'd', gpio_ddr,            1, "d<port><value>        - DDR <port>" )\
+    _GM_( 'S', gpio_set_ddr_bit,    1, "S<port><value>        - DDR <port>" )\
+    _GM_( 'C', gpio_clear_ddr_bit,  1, "C<port><value>        - DDR <port>" )\
+    _GM_( 'i', gpio_in,             0, "i<port>               - PIN <port>" )\
+    _GM_( 'I', gpio_in_mask,        1, "I<port><mask>         - PIN <port>&<mask>" )\
+    _GM_( 'b', gpio_in_bit,         1, "b<port><pos>          - ((PIN <port>&(1<<pos))>>pos\n\r" )\
+    _GM_( 'o', gpio_out,            1, "o<port><value>        - PORT<port> = value\n\r")\
+    _GM_( '^', gpio_xor,            1, "^<port><value>        - PORT<port> = PORT<port> ^ value\n\r")\
+    _GM_( '&', gpio_and,            1, "&<port><value>        - PORT<port> = PORT<port> & value\n\r")\
+    _GM_( '|', gpio_or,             1, "|<port><value>        - PORT<port> = PORT<port> | value\n\r")\
+    _GM_( 's', gpio_set_bit,        1, "s<port><pos>          - PORT<port> = PORT<port> | (1<<pos)\n\r")\
+    _GM_( 'c', gpio_clear_bit,      1, "c<port><pos>          - PORT<port> = PORT<port> & ~(1<<pos)\n\r")
+
+
+#define GPIO_PORTS\
+/*    _GP_( 'a', PORTA, PINA, DDRA )*/\
+    _GP_( 'b', PORTB, PINB, DDRB )\
+    _GP_( 'c', PORTC, PINC, DDRC )\
+    _GP_( 'd', PORTD, PIND, DDRD )
+
+
+enum error_codes
+{
+    GPIO_ERROR_BAD_COMMAND = -1,
+    GPIO_ERROR_BAD_SIZE = -2,
+    GPIO_ERROR_BAD_CASE = -3,
+};
+
+class navputter_gpio_menu_class: public navputter_menu_base_class
+{
+public:
+    virtual void begin(void);
+    virtual void end(void);
+    virtual void poll(void);
+    virtual void usage(void);
+    void gpio_error( uint8_t err );
+    void gpio_ddr( void ); 
+    void gpio_in( void );
+    void gpio_in_mask( void );
+    void gpio_in_bit( void );
+    void gpio_out( void );
+    void gpio_xor( void );
+    void gpio_and( void ); 
+    void gpio_or( void );
+    void gpio_set_bit( void );
+    void gpio_clear_bit( void );
+    void gpio_set_ddr_bit( void );
+    void gpio_clear_ddr_bit( void );
+   
+private:
+    uint8_t m_cmd;                          // current command
+    uint8_t m_pos;                          // current index in m_value for integer read
+    uint8_t m_value[ MAX_INT_SIZE ];        // integer being read
+#define PARAMS_MAX                   1      // just 1 parameter for now
+    uint8_t m_params[ PARAMS_MAX ];         // array of parameters (8 bit)
+    uint8_t m_count;                        // current parameter being read.
+    uint8_t m_port;                         // gpio port (ascii lower case)
+
+    char m_ok[6];
+};
+
+
+
 class navputter_class
 {
 public:
@@ -549,16 +596,43 @@ public:
         while( !m_serial.available() ) m_watchdog.kick();
         m_eeprom.begin();
         m_eeprom.init();
+        m_cur_menu = NULL;
+        m_eeprom_dirty = false;
     }
-       
+    void set_menu( class navputter_menu_base_class *menu )
+    {
+        if ( m_cur_menu )
+        {
+            m_cur_menu->end();
+        }
+        m_cur_menu = menu;       
+        m_cur_menu->begin();
+        m_cur_menu->usage();
+    }
+
+    void clear_menu(void)
+    {
+        m_cur_menu->end();
+        m_cur_menu=NULL;
+    }
     void set_keymap( key_map_t *map, size_t size )
     {
         memcpy( m_cur_map, map, size );
     }
 
-    void poll(void);
+    void poll()
+    {
+        if ( m_cur_menu ) m_cur_menu->poll();
+    }
+    
+    void set_dirty(bool dirty=true) {m_eeprom_dirty=dirty;}
+    bool is_dirty(void) {return m_eeprom_dirty;}
+
     void usage(void);
+#ifndef LEAN_N_MEAN
     void big_whale(void);
+#endif
+    void eeprom_menu(void);
 
     lufa_mouse_class            m_mouse;
     navputter_timer_class       m_timer;
@@ -567,12 +641,13 @@ public:
     usb_keyboard_class          m_keyboard;
     navputter_keypad_class      m_keypad;
     navputter_eeprom_class      m_eeprom;
-
+    navputter_menu_base_class   *m_cur_menu;
     eeprom_header_t             m_config;
     uint8_t                     m_keystate[ MAX_KEY_COLS ];
     uint8_t                     m_last_keystate[ MAX_KEY_COLS ];
     uint8_t                     m_keypress[MAX_KEY_ROWS][ MAX_KEY_COLS ];
     key_map_t                   m_cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+    bool                        m_eeprom_dirty;
 };
 
 #define DOG     myputter.m_watchdog

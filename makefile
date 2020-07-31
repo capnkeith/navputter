@@ -67,9 +67,9 @@ F_USB        = $(F_CPU)
 OPTIMIZATION = s
 TARGET       = navputter
 LUFA_PATH    = ../../../../LUFA
-CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/ -DEEPROM_SIZE=$(EEPROM_SIZE)
+CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -IConfig/ -DEEPROM_SIZE=$(EEPROM_SIZE) -DLEAN_N_MEAN
 LD_FLAGS     = 
-LD_FLAGS     = -Wl,-u,vfprintf -lprintf_flt -lm 
+LD_FLAGS     = -Wl,-u,-lm 
 
 # Default target
 all:

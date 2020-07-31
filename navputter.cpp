@@ -46,7 +46,7 @@
 ******************************************************************************
 */
 
-
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,9 +74,27 @@
     _SC_( 'h', "Show this help.", usage )\
     _SC_( 'f', "Show or update eeprom.", handle_eeprom )\
     _SC_( 'k', "Emulate keypad with serial commands.", serial_keypad )\
-    _SC_( 'g', "Interface with GPIO via serial.", serial_gpio )
+    _SC_( 'g', "Interface with GPIO via serial.", serial_gpio )\
+    _SC_( 'w', "Write config to eeprom.", write_eeprom )
 // end of _SER_CMDS_
+void* operator new(size_t objsize) { 
+    return malloc(objsize); 
+} 
 
+void operator delete(void* obj) { 
+    free(obj); 
+} 
+
+uint8_t atoxi( const char *p)
+{
+        /*
+         * Look for 'x' as second character as in '0x' format
+         */
+        if ((p[1] == 'x')  || (p[1] == 'X'))
+                return(strtol(&p[2], (char **)0, 16));
+        else
+                return(strtol(p, (char **)0, 16));
+}
 
 
 navputter_class myputter={};
@@ -92,9 +110,7 @@ void start_timer(uint32_t msecs);
 
 
 
-
-
-
+#if 0
 key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
         {{KA_REPORT_KEY,'1'},     {KA_REPORT_KEY,'2'}, {KA_REPORT_KEY,'3'},     {KA_REPORT_KEY, 'A'}},
@@ -102,6 +118,7 @@ key_map_t   temp_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
         {{KA_REPORT_KEY,'7'},     {KA_REPORT_KEY,'8'}, {KA_REPORT_KEY,'9'},     {KA_REPORT_KEY, 'C'}},
         {{KA_REPORT_KEY,'*'},     {KA_REPORT_KEY,'0'}, {KA_REPORT_KEY,'#'},     {KA_REPORT_KEY, 'D'}},
 };
+#endif
 
 #define SCANCODE( mod, key ) ((((uint16_t)mod)<<8)|key)
 #define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS )}               /* alt + gives slow zoom in */
@@ -139,26 +156,6 @@ void ser_push( uint8_t c )
     SERIAL.push(c);
 }
 
-void ser_print( const char *str, ... )
-{
-    char buffer[256];
-    va_list args;
-    va_start (args, str);
-    vsprintf (buffer, str, args);
-    SERIAL.write(buffer);
-    va_end (args);
-}
-
-void key_up_event( int row, int col )
-{
-    SERIAL.print("# key_up_event on %d %d\r\n", row, col);
-}
-      
-void key_down_event( int row, int col )
-{
-    SERIAL.print("# key_down_event on %d %d\r\n", row, col);
-}
-      
 void init_keys(void)
 {
     myputter.set_keymap( (key_map_t *)base_map, sizeof( base_map ));
@@ -220,8 +217,8 @@ void navputter_yield(void)
 
 void timer_callback(void)
 {
-    DDRB |= 1;
-    PORTB = PINB ^ 1;
+//    DDRB |= 1;
+//    PORTB = PINB ^ 1;
 
 }
 
@@ -247,8 +244,16 @@ extern "C" int main(void)
 {
     PUTT=&myputter;
     myputter.begin();
+#ifndef LEAN_N_MEAN
     myputter.big_whale();
+#endif
+    SERIAL.write("\n\r");
+    SERIAL.write("\n\r");
 
+    navputter_main_menu_class *main_menu = new navputter_main_menu_class();
+    myputter.set_menu( main_menu ); 
+ 
+    PORTB |= 1; 
 	for (;;)
 	{
         PAD.poll();
@@ -263,12 +268,10 @@ void navputter_eeprom_class::begin(void)
 {
     generic_eeprom_class::begin();
     while ( !ready() ) DOG.kick();
-    SERIAL.print("eeprom ready.\n\r");
 }
 
 void navputter_eeprom_class::read( void *buf, uint32_t len )
 {
-    SERIAL.print("# reading eeprom %d bytes\n", len );
     eeprom_read_block( buf, eeprom_start, len );
 }
 
@@ -296,7 +299,6 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             {
                 KEY.write_scancode( myputter.m_cur_map[row][col].p1 );
                 KEY.write_scancode( myputter.m_cur_map[row][col].p2 );
-                KEY.write_scancode( myputter.m_cur_map[row][col].p3 );
             }
         break;
         case KA_SPECIAL_ACTION:
@@ -306,19 +308,12 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
                 {
                     case SA_TOGGLE_KEY_ARROWS:
                         CONFIG.key_arrows = (CONFIG.key_arrows < ARROW_CONFIG_FAST_KEY ) ?  CONFIG.key_arrows + 1 : 0;
-                        SERIAL.print("key arrows now %d\r\n", CONFIG.key_arrows );
                         break;
                     default:
-                        SERIAL.print("unknown special action %d at %d,%d\n", myputter.m_cur_map[row][col].p1, row, col );
                         break;
                 }
             }
             break;
-        case KA_KEY_ACTION:
-            if ( event == EVENT_KEYPAD_DOWN )
-            {
-                KEY.write(myputter.m_cur_map[row][col].p1);
-            }
         break;
         case KA_MOUSE_LEFT:
         case KA_MOUSE_RIGHT:
@@ -330,12 +325,10 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             }
             else if ( CONFIG.key_arrows == ARROW_CONFIG_SLOW_KEY )
             {
-                SERIAL.print("writing scancode %x\n\r", myputter.m_cur_map[row][col].p1 );
                 KEY.write_scancode( myputter.m_cur_map[row][col].p1 );
             }
             else
             {
-                SERIAL.print("writing scancode %x\n\r", myputter.m_cur_map[row][col].p2 );
                 KEY.write_scancode( myputter.m_cur_map[row][col].p2 );
             }
             break;
@@ -359,8 +352,8 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             }
             break;
         default:
-            SERIAL.print("ERROR: unknown event %d in navputter_keypad::press() %s %d\n", event, __FILE__, __LINE__ );
-                break;
+            assert(0);
+            break;
     }
 }
 
@@ -399,7 +392,7 @@ void navputter_keypad_class::poll(void)
             }
             break;
         default:
-            SERIAL.print("puke on default switch %s %d\n", __FILE__, __LINE__ );
+            assert(0);
             break;
     }
 }
@@ -475,43 +468,502 @@ void navputter_eeprom_class::init(void)
 }
 
 
-void navputter_class::usage(void)
-{
-    SERIAL.print("Main Menu Commands:\r\n");
-#define _SC_( cmd, str, func ) SERIAL.print(" %c) - %s\n\r", (int)cmd, str );
-    _SER_CMDS_
-#undef _SC_
-   
-    SERIAL.print("\n\r\r\rPress command letter:");
-}
 
-void navputter_class::poll()
-{
-
-//    char c = SERIAL.peek();
-    uint8_t c = SERIAL.read();
-    if ( (c == 0xff) || (c == 0)) return;
-    SERIAL.print("I read %c\n\r",c);
-    switch(c)
-    {
-        case 'e' :
-            SERIAL.print("print eeprom\n\r");
-            break;
-        default:
-            usage();
-            break;
-        case 'q' :
-            big_whale();
-            break;
-    }
-} 
-    
-    
+#ifndef LEAN_N_MEAN
 void navputter_class::big_whale(void)
 {
 #define _BW_(str) SERIAL.write(str"\n\r");
     _BIG_WHALE_
 #undef _BW_
 }
+#endif
+
+void navputter_menu_base_class::begin(void)
+{
+        SERIAL.write("Base Menu:");
+}
+
+void navputter_menu_base_class::end(void)
+{
+        SERIAL.write("Base Menu Done.");
+        free( this );
+}
+
+void navputter_menu_base_class::poll(void)
+{
+    char c = SERIAL.read();
+    if ( c != 0xff )
+    {
+    }
+}
+
+void navputter_menu_base_class::usage(void)
+{
+}
+
+void navputter_main_menu_class::begin(void)
+{
+}
+
+void navputter_main_menu_class::end(void)
+{
+    free( this );
+}
+
+void navputter_main_menu_class::poll(void)
+{
+    char c = SERIAL.read();
+    if ( c != 0xff )
+    {
+#define _SC_( cmd, str, func ) if ( cmd == c ) { func(); goto DONE;}
+    _SER_CMDS_
+#undef _SC_
+        usage();    
+    }
+DONE:
+    return;
+}
+
+void navputter_main_menu_class::usage(void)
+{
+    SERIAL.print("Main Menu Commands:\r\n");
+#define _SC_( cmd, str, func ) SERIAL.print(" %c) - %s\n\r", (int)cmd, str ); 
+    _SER_CMDS_
+#undef _SC_
+    SERIAL.print("\n\r\r\rPress command letter:");
+}
+
+void navputter_main_menu_class::handle_eeprom(void)
+{
+    myputter.clear_menu();
+    navputter_eeprom_menu_class *em = new navputter_eeprom_menu_class( );
+    myputter.set_menu(em);
+}
+
+
+void navputter_main_menu_class::serial_keypad(void)
+{
+    SERIAL.print("handle keypad\n\r");
+}
+
+void navputter_main_menu_class::serial_gpio(void)
+{
+    myputter.clear_menu();
+    navputter_gpio_menu_class *gm = new navputter_gpio_menu_class();
+    assert(gm);
+    myputter.set_menu(gm);
+}
+
+void navputter_main_menu_class::write_eeprom(void)
+{
+    PROM.write( &CONFIG, sizeof( CONFIG ) );
+    SERIAL.print("\n\rConfig written to EEPROM.\n\r");
+}
+
+void navputter_eeprom_menu_class::begin(void)
+{
+    SERIAL.write("EEPROM Menu\n\r\n\r");
+    set_state(READ_COMMAND);
+}
+
+void navputter_eeprom_menu_class::end(void)
+{
+    free( this );
+}
+
+void navputter_eeprom_menu_class::poll(void)
+{
+    uint8_t c;
+    switch( get_state() )
+    {
+        case READ_INT:
+            c = SERIAL.read();
+            if ( c == 0xff ) return;
+            SERIAL.write("READ INT\n\r");
+            if ( (c == '\n') || (c=='\r'))
+            {
+                m_int_value[m_position]=0;
+                set_state( SET_VALUE );
+            }
+            else if ( !isdigit( c ) )
+            {
+                SERIAL.write("Illegal value.\n\r");
+                usage();
+                set_state( READ_COMMAND );
+            }
+            else
+            {
+                m_int_value[ m_position++ ] = c;
+                if ( m_position == sizeof( m_int_value ) )
+                {
+                    SERIAL.write("number too long.\n\r");
+                    set_state( READ_COMMAND );
+                }
+                else SERIAL.write(c);
+            }
+            break;
+            
+        case READ_COMMAND:
+            m_command = SERIAL.read();
+            if ( m_command == 0xff ) return;
+            #define _ED_(_cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_) \
+            if ( m_command == _cmd_ ) \
+            {\
+                set_state( READ_INT );\
+                m_position =0;\
+                SERIAL.print("integer:\n\r");\
+                return;\
+            }
+                _EEPROM_DESC_
+            #undef _ED_
+             
+            if ( m_command == 'q' )
+            {
+                myputter.clear_menu();
+                navputter_main_menu_class *mm = new navputter_main_menu_class();
+                myputter.set_menu(mm);
+                return;
+            }
+            else
+            {
+                usage();
+            }
+            break; 
+        case SET_VALUE:
+            SERIAL.write("SET VALUE STATE..\n\r");
+            #define _ED_(_cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_) \
+            if ( m_command == _cmd_ ) \
+            {\
+                set_state( READ_COMMAND );\
+                SERIAL.write("reading int..\n\r");\
+                int i = atoi((const char *)m_int_value);\
+                SERIAL.print("reading int. %d.\n\r",i);\
+                SERIAL.print("read in %d\n\r",i);\
+                if ( (i < _min_) || (i > _max_) )\
+                {\
+                    SERIAL.print("Range Error.\n\r");\
+                    return;\
+                }\
+                SERIAL.print("set value %d\n\r", i );\
+                CONFIG._field_ = (__typeof__(CONFIG._field_))i;\
+                break;\
+            } 
+                _EEPROM_DESC_
+            #undef _ED_
+            usage();
+            set_state( READ_COMMAND );
+            break;
+        default:
+            SERIAL.write("ILLEGAL STATE!..\n\r");\
+            return;
+    }
+}
+
+void navputter_eeprom_menu_class::usage(void)
+{
+    SERIAL.print("EEPROM Settings:\r\n");
+    SERIAL.print("CMD %-15s %-8s\n\r", "Field", "Value" );
+    #define _ED_( _cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_ ) SERIAL.print("%c)%-15s" _fmt_ "\n\r", _cmd_, #_field_,  CONFIG._field_ );
+        _EEPROM_DESC_
+    #undef _ED_
+    SERIAL.print("q) quit.\n\r");
+    SERIAL.print("\n\r\r\rPress Command to Change Value:");
+}
+
+void navputter_gpio_menu_class::poll(void)
+{
+    uint8_t c=0;
+    switch( get_state() )
+    {
+        case READ_COMMAND:
+            c = SERIAL.read();
+            if ( c == 0xff ) return;
+            SERIAL.write(c);
+#define _GM_( _cmd_, _func_, _count_, _desc_ ) \
+            if ( _cmd_ == c ) \
+            {\
+                m_cmd = c;\
+                m_count = _count_;\
+                m_pos = 0;\
+                set_state( READ_PORT );\
+                return;\
+            }
+            GPIO_MENU
+#undef _GM_
+            gpio_error( GPIO_ERROR_BAD_COMMAND );
+            usage();
+        break;
+        case READ_PORT:
+            c = SERIAL.read();
+            if (c == 0xff ) return;
+            SERIAL.write(c);
+            if ( c >= 'a' && c <= 'd' )
+            {
+                SERIAL.print("port %c\n\r",c);
+                m_port = c;
+                if ( m_count )
+                {
+                    set_state( READ_PARAM );
+                }
+                else 
+                {
+                    SERIAL.write("call\n\r");
+                    set_state( CALL_FUNC );
+                }
+            }
+            break;
+        case READ_PARAM:
+            c = SERIAL.read();
+            if ( c == 0xff ) return;
+            SERIAL.write(c);
+            if ( isxdigit(c) )
+            {
+                m_value[ m_pos++ ] = c;
+                SERIAL.print("hex, pos=%d\n\r", m_pos);
+                if ( m_pos == sizeof( m_value ) )
+                {
+                    gpio_error( GPIO_ERROR_BAD_SIZE );
+                    set_state(READ_COMMAND);
+                    return;
+                }  
+#define HEX_WORD_READ_SIZE 2
+                if (m_pos == HEX_WORD_READ_SIZE)
+                {
+                    SERIAL.write("convert\n\r");
+                    set_state( CONVERT_VALUE );
+                }
+            }
+            else
+            {
+                gpio_error( GPIO_ERROR_BAD_SIZE );
+                set_state(READ_COMMAND);
+            }
+            break;
+        case CONVERT_VALUE:
+            m_count--;
+            m_params[m_count] = atoxi( (const char *)m_value );
+            SERIAL.print("convert[%d]=%x\n\r", m_count, m_params[m_count]);
+            if ( m_count == 0 )
+                set_state(CALL_FUNC);
+            else 
+            {
+                m_pos=0;
+                set_state(READ_PARAM);
+            }
+            break;
+        case CALL_FUNC:
+#define _GM_( _cmd_, _func_, _count_, _desc_ ) \
+            if ( _cmd_ == m_cmd ) \
+            {\
+                _func_();\
+            }
+            GPIO_MENU
+#undef _GM_
+            set_state( READ_COMMAND );\
+            break; 
+        default:
+            gpio_error( GPIO_ERROR_BAD_CASE );
+            break;
+    }
+
+    if ( c == 'q' )
+    {
+        myputter.clear_menu();
+        navputter_main_menu_class *mm = new navputter_main_menu_class();
+        assert(mm);
+        myputter.set_menu(mm);  
+    } 
+}
+void navputter_gpio_menu_class::gpio_error(uint8_t err)
+{
+    SERIAL.print("ERR:%d\n",err);
+}
+
+void navputter_gpio_menu_class::end(void)
+{
+    free(this);
+}
+
+void navputter_gpio_menu_class::begin(void)
+{
+    set_state( READ_COMMAND );
+    SERIAL.print("\n\rGPIO Menu:\n\r");
+    DDRB  |= 1; 
+    PORTB |= 1;
+    strcpy( m_ok, "OK.\n\r" );
+}
+
+void navputter_gpio_menu_class::usage(void)
+{
+#if LEAN_N_MEAN 
+    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write( _cmd_ ); SERIAL.write( "<PORT>" ); if (_params_) SERIAL.write("<value>  - "); SERIAL.write( "\n\r" );
+        GPIO_MENU
+    #undef _GM_
+    SERIAL.print( "&<port>[value|mask]\n\r");
+#else
+    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.print( "%c)       %s\n", _cmd_, _desc_ );
+        GPIO_MENU
+    #undef _GM_
+    SERIAL.print("Enter Command:\n\r");
+#endif
+}
+
+void navputter_gpio_menu_class::gpio_in_mask(void)
+{
+    uint8_t v=0;
+#define _GP_( ascii, port, pin, dir ) \
+    if ( m_port == ascii )\
+    {\
+        v = pin & m_params[0];\
+    }
+    GPIO_PORTS
+#undef _GP_
+    SERIAL.write("OK:");
+    SERIAL.print("%x.\n\r",v);
+}    
+
+
+void navputter_gpio_menu_class::gpio_in(void)
+{
+    uint8_t v=0;
+#define _GP_( ascii, port, pin, dir ) \
+    if ( m_port == ascii )\
+    {\
+        v = pin;\
+    }
+    GPIO_PORTS
+#undef _GP_
+    SERIAL.write("OK:");
+    SERIAL.print("%x.\n\r",v);
+}    
+
+void navputter_gpio_menu_class::gpio_in_bit(void)
+{
+    uint8_t v=0;
+#define _GP_( ascii, port, pin, dir ) \
+    if ( m_port == ascii )\
+    {\
+        v = ((pin & (1<< m_params[0]))>>m_params[0]);\
+    }
+    GPIO_PORTS
+#undef _GP_
+    SERIAL.write("OK:");
+    SERIAL.print("%x.\n\r",v);
+}    
+
+
+void navputter_gpio_menu_class::gpio_xor(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        port = port ^ 1;\
+        SERIAL.write(m_ok);\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+void navputter_gpio_menu_class::gpio_ddr(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        dir = m_params[0];\
+        SERIAL.write(m_ok);\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+void navputter_gpio_menu_class::gpio_set_ddr_bit(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        dir |= 1<<m_params[0];\
+        SERIAL.write(m_ok);\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+void navputter_gpio_menu_class::gpio_clear_ddr_bit(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        dir &= ~(1<<m_params[0]);\
+        SERIAL.write(m_ok);\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+void navputter_gpio_menu_class::gpio_clear_bit(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        port = port & ~(1<<m_params[0]);\
+        SERIAL.print( m_ok );\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+void navputter_gpio_menu_class::gpio_set_bit(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        port = (1<<m_params[0]);\
+        SERIAL.write( m_ok );\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+void navputter_gpio_menu_class::gpio_and(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        port = port & m_params[0];\
+        SERIAL.write( m_ok );\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+
+
+
+void navputter_gpio_menu_class::gpio_or(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        port = port | m_params[0];\
+        SERIAL.write( m_ok );\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
+
+
+void navputter_gpio_menu_class::gpio_out(void)
+{
+#define _GP_( ascii, port, pin, dir ) \
+    if ( ascii == m_port )\
+    {\
+        SERIAL.write( m_ok );\
+        port = m_params[0];\
+    }
+    GPIO_PORTS
+#undef _GP_
+}
+
 
 /** Configures the board hardware and chip peripherals for the demo's functionality. */

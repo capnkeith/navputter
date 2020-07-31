@@ -44,7 +44,7 @@ extern uint8_t key_out;
 extern uint8_t modifier_out;
 extern uint8_t global_mouse_mode;
 uint8_t global_mouse_dir;
-#define MAX_KEY_BUFFER_SZ 16
+#define MAX_KEY_BUFFER_SZ 8
 uint16_t out_key_buffer[ MAX_KEY_BUFFER_SZ ];   /* key presses going out the USB */
 
                                                 /* I don't know if volitle is required or not... */
@@ -247,13 +247,6 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
     {
         static uint16_t fake=0;
         uint16_t keypair = pop_key();
-#if 0
-        if ( fake < 0x100 )
-        {
-            fake++;
-            keypair = fake;
-        }
-#endif
         key_state = CLEAR_KEY;
         if ( keypair )
         {
