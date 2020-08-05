@@ -240,12 +240,9 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
                                          void* ReportData,
                                          uint16_t* const ReportSize)
 {
-    uint8_t keypair = 0;
-
     USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
     if ( key_state == SEND_KEY )
     {
-        static uint16_t fake=0;
         uint16_t keypair = pop_key();
         key_state = CLEAR_KEY;
         if ( keypair )
