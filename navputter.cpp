@@ -203,6 +203,20 @@ extern "C" int main(void)
     }
 }
 
+#define EEPROM_KEYMAP_START 32
+
+void navputter_eeprom_class::write( void *buf, uint32_t len, size_t offset )
+{
+    uint8_t *dst = (uint8_t *)offset;
+    uint8_t *c = (uint8_t *)buf;
+    uint16_t i; 
+    for ( i=0; i< len; i++ )
+    {
+        eeprom_update_byte( dst+i, *(c+i) );
+        DOG.kick();
+    }
+}
+
 void navputter_eeprom_class::begin(void)
 {
     generic_eeprom_class::begin();
@@ -399,8 +413,9 @@ void navputter_eeprom_class::init(void)
 
     if ( hdr_default.version != hdr.version )
     {
+        SERIAL.print("in mem ver=%x, in eeprom=%x, writing config\n\r", hdr_default.version, hdr.version );
         memcpy( (void *)&CONFIG, (void *)&hdr_default, sizeof( hdr_default ) );
-        write((void *)&CONFIG, sizeof(eeprom_layout_t));
+        write((void *)&CONFIG, sizeof(CONFIG));
         SERIAL.print_P( global_eeprom_reset_str,  hdr_default.version, EOLN);
     }
     else
@@ -423,12 +438,10 @@ void navputter_class::big_whale(void)
 
 void navputter_menu_base_class::begin(void)
 {
-        SERIAL.write("Base Menu:");
 }
 
 void navputter_menu_base_class::end(void)
 {
-        SERIAL.write("Base Menu Done.");
         free( this );
 }
 
@@ -467,9 +480,10 @@ DONE:
     return;
 }
 
+const char global_main_menu_str1[] PROGMEM = "Main Menu:%s";
 void navputter_main_menu_class::usage(void)
 {
-    SERIAL.print("Main Menu:%s", EOLN );
+    SERIAL.print_P(global_main_menu_str1, EOLN );
 #define _SC_( cmd, str, func ) SERIAL.print(" %c) - %s%s", (int)cmd, str, EOLN ); 
     _SER_CMDS_
 #undef _SC_
@@ -492,10 +506,13 @@ void navputter_main_menu_class::serial_gpio(void)
     myputter.set_menu(gm);
 }
 
+const char global_eeprom_string_1[] PROGMEM = "%sEEPROM written.%s";
+const char global_eeprom_string_2[] PROGMEM = "%sEEPROM Menu%s%s";
+
 void navputter_main_menu_class::write_eeprom(void)
 {
     PROM.write( &CONFIG, sizeof( CONFIG ) );
-    SERIAL.print("%sEEPROM written.%s", EOLN, EOLN );
+    SERIAL.print_P( global_eeprom_string_1, EOLN, EOLN );
 }
 
 void navputter_main_menu_class::handle_keymaps(void)
@@ -508,7 +525,7 @@ void navputter_main_menu_class::handle_keymaps(void)
 
 void navputter_eeprom_menu_class::begin(void)
 {
-    SERIAL.print("EEPROM Menu%s%s", EOLN, EOLN);
+    SERIAL.print_P( global_eeprom_string_2, EOLN, EOLN, EOLN);
     set_state(READ_COMMAND);
 }
 
@@ -942,6 +959,22 @@ void navputter_keycode_menu_class::set_keycode_display_indicies(void)
 #undef _MODL_
 }
 
+
+static const char global_save_keymap_to_eeprom_str[] PROGMEM = "Keymap saved to index %d (offset %d)%s";
+
+#define EEPROM_KEYCODE_OFFSET 32
+void navputter_keycode_menu_class::save_keymap_to_eeprom( uint8_t ix )
+{
+    SERIAL.print_P( global_save_keymap_to_eeprom_str, ix, 0, EOLN);
+    PROM.write( (void *)&m_key_map, sizeof( m_key_map ), EEPROM_KEYCODE_OFFSET + ix * sizeof( key_map_t ) );
+// sizeof( CONFIG ) + (ix * sizeof( key_map_t )) );
+    if ( ix == CONFIG.key_maps )
+    {
+        CONFIG.key_maps++;
+    }
+    PROM.write( &CONFIG, sizeof( CONFIG ) );
+}
+ 
 void navputter_keycode_menu_class::poll(void)
 {
     uint8_t c;
@@ -1022,6 +1055,7 @@ void navputter_keycode_menu_class::poll(void)
                 }
                 myputter.error( ERROR_KEYMAP_NOT_A_NUMBER );
                 set_state( READ_COMMAND );
+                usage();
             }
             else
             {
@@ -1030,11 +1064,20 @@ void navputter_keycode_menu_class::poll(void)
             break;
         case LOAD_KEYMAP:
             c = atoi((const char *)m_int_value);
-                     
             break;
-        default:
+        case SAVE_KEYMAP:
+            c = atoi((const char *)m_int_value);
+            if (( c > CONFIG.key_maps )||(c<0))
+            {
+                myputter.error( ERROR_KEYMAP_OUT_OF_RANGE );
+                set_state( READ_COMMAND );
+                return;
+            }
+            save_keymap_to_eeprom( c ); 
+            usage();
+            set_state( READ_COMMAND );
+            break;
         case READ_SAVE_INT:
-#if 0
             c = SERIAL.read();
             if ( c == 0xff ) return;
             if ( !isdigit( c ) )
@@ -1043,10 +1086,16 @@ void navputter_keycode_menu_class::poll(void)
                 {
                     m_int_value[m_int_ix]=0;
                     uint8_t i = atoi((const char *)m_int_value);
-                    if ( i >= CONFIG.key_maps )
+                    if ( i >  CONFIG.key_maps )
+                    {
                         myputter.error( ERROR_KEYMAP_OUT_OF_RANGE );
+                        return;
+                    }
                     else
-                        set_state( LOAD_KEYMAP );
+                    {
+                        set_state( SAVE_KEYMAP );
+                        return;
+                    }       
                 }
                 myputter.error( ERROR_KEYMAP_NOT_A_NUMBER );
                 set_state( READ_COMMAND );
@@ -1055,10 +1104,10 @@ void navputter_keycode_menu_class::poll(void)
             {
                 m_int_value[m_int_ix++] = c;
             }
-             
+            break;
+        default: 
             myputter.error( ERROR_KEYMAP_EDITOR_INVALID_STATE );
             assert(0);
-#endif
             break;
     }
         
@@ -1236,7 +1285,7 @@ void navputter_keycode_menu_class::format_key_action( uint8_t row, uint8_t col)
                     sz += SERIAL.write("ArrowMode");
                     break;
                 default:
-                    SERIAL.write("? ");
+                    myputter.error( ERROR_KEYMAP_INVALID_ACTION );
                     break;
             }
             break;
@@ -1266,10 +1315,23 @@ void navputter_keycode_menu_class::show_keymap(void)
 }
 
 
+
+
+static const char global_keycode_load_str[] PROGMEM = "Enter 0-%d to load keymap from eeprom.%s";
+static const char global_keycode_error_no_keymaps_str[] PROGMEM = "%sNo keymaps to load.%s%s";
 void navputter_keycode_menu_class::load_keymap(void)
 {
+    if ( CONFIG.key_maps == 0 )
+    {
+        SERIAL.print_P( global_keycode_error_no_keymaps_str, EOLN, EOLN, EOLN );
+        usage();
+        set_state( READ_COMMAND );
+        return;
+    }
+    SERIAL.print_P( global_keycode_load_str, CONFIG.key_maps, EOLN);  
     set_state( READ_LOAD_INT );
 }
+
 
 const char global_progmem_keycode_editmenu_format_string[] PROGMEM = "%c) - %S%s"; 
 const char keycode_menu_str_1[] PROGMEM = "\n\rPress menu KEY) to edit, 'w' to write, 'q' to quit:";
@@ -1294,12 +1356,29 @@ void navputter_keycode_menu_class::edit_keymap(void)
 }
 
 
-//const char global_save_keymap_string[] PROGMEM = "Press 'n' to save new keymap at index %d, or enter 0-%d to overwrite keyslot at that index%s";
+const char global_save_keymap_string_1[] PROGMEM = "%sPress an integer up to (non inclusive) %d to overwrite that slot, or%s";
+const char global_save_keymap_string_2[] PROGMEM = "Press %d to add a new keymap at index %d:";
+const char global_dump_keymap_string_1[] PROGMEM = "Dumping keymap %d:%s";
+
+void navputter_keycode_menu_class::dump_keymap(void)
+{
+    uint8_t i;
+    uint8_t j;
+    for ( i=0; i< CONFIG.key_maps; i++ )
+    {
+        SERIAL.print_P( global_dump_keymap_string_1,i,EOLN);
+        PROM.read( m_key_map, sizeof(m_key_map), sizeof( CONFIG ) + i*sizeof(key_map_t) );
+        show_keymap();
+    }
+}
+
 
 void navputter_keycode_menu_class::save_keymap(void)
 {
-//    SERIAL.print_P( global_save_keymap_string, CONFIG.key_maps, EOLN );
-//    set_state( READ_SAVE_INT );
+    if ( CONFIG.key_maps )
+        SERIAL.print_P( global_save_keymap_string_1, CONFIG.key_maps, EOLN );
+    SERIAL.print_P( global_save_keymap_string_2, CONFIG.key_maps, CONFIG.key_maps );
+    set_state( READ_SAVE_INT );
 }
 void navputter_keycode_menu_class::quit(void)
 {

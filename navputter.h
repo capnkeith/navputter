@@ -41,6 +41,7 @@ enum error_codes
     ERROR_KEYMAP_EDITOR_INVALID_STATE,
     ERROR_KEYMAP_OUT_OF_RANGE,
     ERROR_KEYMAP_NOT_A_NUMBER,
+    ERROR_KEYMAP_INVALID_ACTION,
 };
 
 #define MAX_KEY_ARROW_STATE 2   /
@@ -88,7 +89,7 @@ enum special_actions
  * 64 - EEPROM END  - keymaps and key sequences.
  */
 
-typedef struct eeprom_header
+typedef struct __attribute__((packed)) eeprom_header
 {
 #define _ED_( c, _field_, _type_, d, min, max, f, func, help ) _type_ _field_;
     _EEPROM_DESC_
@@ -97,13 +98,12 @@ typedef struct eeprom_header
 
 
 
-
-typedef struct eeprom_layout
+typedef struct __attribute__((packed)) eeprom_layout
 {
     union
     {
         eeprom_header_t config;
-        uint8_t         raw[ 16 ];
+        uint8_t         raw[ 32 ];
     };
 }eeprom_layout_t;
 
@@ -460,11 +460,7 @@ class generic_eeprom_class
             return eeprom_is_ready();
         }
         virtual void read( void *buf, uint32_t len, size_t offset=0 );
-
-        void write( void *buf, uint32_t len )
-        {
-            eeprom_write_block( buf, eeprom_start, len );
-        }
+        virtual void write( void *buf, uint32_t len, size_t offset=0 );
 };
 
 
@@ -474,6 +470,7 @@ class navputter_eeprom_class : public generic_eeprom_class
         void begin(void);
         void init(void);
         virtual void read( void *buf, uint32_t len, size_t offset=0 );
+        virtual void write( void *buf, uint32_t len, size_t offset=0 );
 };
 
 
@@ -640,6 +637,7 @@ enum keycode_edit_enums
     _KML_( 'l', "load keymap", load_keymap )\
     _KML_( 's', "save keymap", save_keymap )\
     _KML_( 'e', "edit keymap", edit_keymap )\
+    _KML_( 'd', "dump all keymaps", dump_keymap )\
     _KML_( 'q', "quit", quit )
    
 
@@ -791,6 +789,7 @@ class navputter_keycode_menu_class: public navputter_menu_base_class
     void            quit(void);
     void            show_keymap(void);
     void            save_keymap(void);
+    void            dump_keymap(void);
     void            load_keymap(void);
     void            fill_keymap(void);
     void            format_key_action( uint8_t row, uint8_t col);
@@ -804,6 +803,7 @@ class navputter_keycode_menu_class: public navputter_menu_base_class
     void            next_key(void);
     void            quit_edit(void);
     void            set_keycode_display_indicies(void);
+    void            save_keymap_to_eeprom( uint8_t ix );
     void            edit_next(void);
 private:
     uint8_t         m_cmd;
