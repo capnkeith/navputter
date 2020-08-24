@@ -616,12 +616,12 @@ private:
 };
 
 #define KEYCODE_EDIT_LIST\
-    _KEL_( 'q', "next action",         next_action,    KEYVAL_ACTION )\
-    _KEL_( 'w', "prev acton",          prev_action,    KEYVAL_aCTION )\
-    _KEL_( 'd', "next key value",      next_key,       KEYVAL_INC )\
-    _KEL_( 'f', "prev key value",      prev_key,       KEYVAL_DEC )\
-    _KEL_( 'a', "modifier next",       next_modifier,  KEYMOD_INC )\
-    _KEL_( 's', "modifier prev",       prev_modifier,  KEYMOD_DEC )\
+    _KEL_( 'a', "next action",         next_action,    KEYVAL_NEXT_ACTION )\
+    _KEL_( 's', "prev acton",          prev_action,    KEYVAL_PREV_ACTION )\
+    _KEL_( 'd', "next key value",      next_key,       KEYVAL_NEXT_KEY )\
+    _KEL_( 'f', "prev key value",      prev_key,       KEYVAL_PREV_KEY )\
+    _KEL_( 'z', "modifier next",       next_modifier,  KEYMOD_NEXT_MOD )\
+    _KEL_( 'x', "modifier prev",       prev_modifier,  KEYMOD_PREV_MOD )\
     _KEL_( 'n', "edit next",           edit_next,      KEYMOD_NEXT )\
     _KEL_( 'q', "quit",                quit_edit,      KEYVAL_QUIT )
 
