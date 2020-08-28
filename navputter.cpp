@@ -102,6 +102,8 @@ key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 };
 
 
+#define KEY_MAP_SIZE sizeof(base_map)
+
 
 /* this is the serial interface. */
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
@@ -966,8 +968,7 @@ static const char global_save_keymap_to_eeprom_str[] PROGMEM = "Keymap saved to 
 void navputter_keycode_menu_class::save_keymap_to_eeprom( uint8_t ix )
 {
     SERIAL.print_P( global_save_keymap_to_eeprom_str, ix, 0, EOLN);
-    PROM.write( (void *)&m_key_map, sizeof( m_key_map ), EEPROM_KEYMAP_START );
-// sizeof( CONFIG ) + (ix * sizeof( key_map_t )) );
+    PROM.write( (void *)&m_key_map, sizeof( m_key_map ), EEPROM_KEYMAP_START + ix * KEY_MAP_SIZE ); 
     if ( ix == CONFIG.key_maps )
     {
         CONFIG.key_maps++;
@@ -1037,7 +1038,7 @@ void navputter_keycode_menu_class::poll(void)
             KEYCODE_EDIT_LIST
 #undef _KEL_
             SERIAL.write(EOLN);
-            format_key_action(m_row,m_col);
+            if ( c != 'q' ) format_key_action(m_row,m_col);
             break;
         case READ_LOAD_INT:
             c = SERIAL.read();
@@ -1355,21 +1356,21 @@ const char keycode_menu_str_1[] PROGMEM = "%sPress menu KEY) to edit, 'w' to wri
 const char keycode_menu_str_3[] PROGMEM = "KEY:";
 void navputter_keycode_menu_class::key_edit_usage(void)
 {
-    SERIAL.write(EOLN);
-    SERIAL.write(EOLN);
-    format_key_action( m_row, m_col );
+//    SERIAL.write(EOLN);
+//    SERIAL.write(EOLN);
+//    format_key_action( m_row, m_col );
     SERIAL.write(EOLN);
 #define _KEL_( _c_, _str_, _func_, _enum_ ) SERIAL.print_P( global_progmem_keycode_editmenu_format_string, _c_, global_progmem_keycode_menu_##_enum_, EOLN );
                 KEYCODE_EDIT_LIST
 #undef _KEL_ 
     SERIAL.write(EOLN);
-    SERIAL.print_P(keycode_menu_str_3);
 }
 
 void navputter_keycode_menu_class::edit_keymap(void)
 {
     show_keymap();
-    key_edit_usage();
+    //key_edit_usage();
+    SERIAL.print_P(keycode_menu_str_3);
     set_state( EDIT_COMMAND );
 }
 
@@ -1381,12 +1382,10 @@ const char global_dump_keymap_string_1[] PROGMEM = "Dumping keymap %d:%s%s";
 void navputter_keycode_menu_class::dump_keymap(void)
 {
     uint8_t i;
-    uint8_t j;
     for ( i=0; i< CONFIG.key_maps; i++ )
     {
         SERIAL.print_P( global_dump_keymap_string_1,i,EOLN,EOLN);
-        PROM.read( m_key_map, sizeof(m_key_map), EEPROM_KEYMAP_START + i*sizeof(key_map_t) );
-        for ( j=0; j< sizeof(m_key_map); j++ ) SERIAL.print("km[%d]=%x ", j, *(((uint8_t *)&m_key_map)+i));
+        PROM.read( m_key_map, sizeof(m_key_map), EEPROM_KEYMAP_START + i* KEY_MAP_SIZE );
         show_keymap();
     }
 }
@@ -1395,7 +1394,7 @@ void navputter_keycode_menu_class::dump_keymap(void)
 void navputter_keycode_menu_class::save_keymap(void)
 {
     if ( CONFIG.key_maps )
-        SERIAL.print_P( global_save_keymap_string_1, CONFIG.key_maps, EOLN );
+        SERIAL.print_P( global_save_keymap_string_1, EOLN, CONFIG.key_maps, EOLN );
     SERIAL.print_P( global_save_keymap_string_2, CONFIG.key_maps, CONFIG.key_maps );
     set_state( READ_SAVE_INT );
 }
