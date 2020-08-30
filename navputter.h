@@ -62,21 +62,23 @@ enum special_actions
 
 
 
+#define BUILT_IN_MAP 0xff   // use the hard coded keymap, otherwise read map from eeprom at start.
 
 
 /* keep the header to 16 bytes */
 #define _EEPROM_DESC_\
-    _ED_( 'v', version,      uint16_t,    0x0102,        0, 0xff,           "%-8x",    NULL,              "EEPROM version. Change to reset device to factory default." )\
-    _ED_( 'r', rows,         uint8_t,     MAX_KEY_ROWS,  1, MAX_KEY_ROWS,   "%-8d",    NULL,              "Number of rows of keys on your keypad." )\
-    _ED_( 'c', cols,         uint8_t,     MAX_KEY_COLS,  1, MAX_KEY_COLS,   "%-8d",    NULL,              "Number of columns of keys on your keypad." )\
-    _ED_( 'f', flip_rows,    uint8_t,     1,             0, 1,              "%-8d",    NULL,              "Flip keypad rows." )\
-    _ED_( 'l', flip_cols,    uint8_t,     1,             0, 1,              "%-8d",    NULL,              "Flip keypad columns." )\
-    _ED_( 's', mouse_step,   uint8_t,     2,             1, 32,             "%-8d",    NULL,              "Mouse step." )\
-    _ED_( 'k', key_maps,     uint8_t,     0,             0, 0xff,           "%-8d",    NULL,              "Total keymaps in memory." )\
-    _ED_( 'x', screen_x,     uint16_t,    1920,          2, 7680,           "%-8d",    NULL,              "Total keymaps in memory." )\
-    _ED_( 'y', screen_y,     uint16_t,    1080,          2, 3240,           "%-8d",    NULL,              "Total keymaps in memory." )\
-    _ED_( 'm', screen_mac,   uint8_t,     1,             0, 1,              "%-8d",    NULL,              "Mac Mouse." )\
-    _ED_( 'K', key_arrows,   uint8_t,     0,             0, 1,              "%-8d",    NULL,              "Keyboard arrows by default." )\
+    _ED_( 'v', version,          uint16_t,    0x0102,        0, 0xff,           "%-8x",    no_check,              "EEPROM version. Change to reset device to factory default." )\
+    _ED_( 'r', rows,             uint8_t,     MAX_KEY_ROWS,  1, MAX_KEY_ROWS,   "%-8d",    no_check,              "Number of rows of keys on your keypad." )\
+    _ED_( 'c', cols,             uint8_t,     MAX_KEY_COLS,  1, MAX_KEY_COLS,   "%-8d",    no_check,              "Number of columns of keys on your keypad." )\
+    _ED_( 'f', flip_rows,        uint8_t,     1,             0, 1,              "%-8d",    no_check,              "Flip keypad rows." )\
+    _ED_( 'l', flip_cols,        uint8_t,     1,             0, 1,              "%-8d",    no_check,              "Flip keypad columns." )\
+    _ED_( 's', mouse_step,       uint8_t,     2,             1, 32,             "%-8d",    no_check,              "Mouse step." )\
+    _ED_( 'k', key_maps,         uint8_t,     0,             0, 0xff,           "%-8d",    no_check,              "Total keymaps in memory." )\
+    _ED_( 'x', screen_x,         uint16_t,    1920,          2, 7680,           "%-8d",    no_check,              "Total keymaps in memory." )\
+    _ED_( 'y', screen_y,         uint16_t,    1080,          2, 3240,           "%-8d",    no_check,              "Total keymaps in memory." )\
+    _ED_( 'm', screen_mac,       uint8_t,     1,             0, 1,              "%-8d",    no_check,              "Mac Mouse." )\
+    _ED_( 'K', key_arrows,       uint8_t,     0,             0, 1,              "%-8d",    no_check,              "Keyboard arrows by default." )\
+    _ED_( 'd', default_keymap,   uint8_t,     BUILT_IN_MAP,  0, 0xff,           "%-8x",    validate_keymap,       "Default startup keymap from eeprom." )\
 // endo fo _EEPROM_DESC_ list
 
 
@@ -553,7 +555,8 @@ public:
     virtual void end(void);
     virtual void poll(void);
     virtual void usage(void);
-
+    int validate_keymap( int cmd, int val );
+    int no_check( int cmd, int val );
 
 private:
     bool    m_dirty;
