@@ -33,7 +33,7 @@
 
 #define EEPROM_KEYMAP_START 32
 uint8_t global_tmp_buf[MAX_TMP_BUFFER_SIZE];
-char global_str_ok[] = "OK.";
+char global_str_ok[] = "OK.\n\r";
 char global_str_eoln[] = "\n\r";
 
 #define EOLN     global_str_eoln 
@@ -76,9 +76,9 @@ ISR (TIMER1_COMPA_vect)
 
 void start_timer(uint32_t msecs);
 
-
+#define HOLD_TIME(_mint_, _maxt_ ) ((_mint_)&0x0f) | ((_maxt_)<<4)
 #define SCANCODE( mod, key ) ((((uint16_t)mod)<<8)|key)
-#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS )}      /* alt + gives slow zoom in */
+#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), SA_POWER_CYCLE}      /* alt + gives slow zoom in */
 #define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, '3', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)} /* alt - gives slow zoom out */
 #define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, 'a', SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                              /* f2 is follow */
 #define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, 'b', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                    /* ctrl r is route */
@@ -186,6 +186,7 @@ extern "C" void get_mouse_status( int8_t *y, int8_t *x, uint8_t *buttons )
 
 extern "C" int main(void)
 {
+
     PUTT=&myputter;
     myputter.begin();
     myputter.big_whale();
@@ -247,6 +248,26 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
     col = (CONFIG.flip_cols)?CONFIG.cols - col - 1:col;
 
     uint8_t action = myputter.m_cur_map[row][col].action;
+    static uint32_t last_hold = 0;
+
+    if ( myputter.m_cur_map[row][col].hold_action )
+    {
+        if (event == EVENT_KEYPAD_UP)
+        {
+            uint32_t delta = global_ticks - last_hold;
+            delta /= 1000;
+            if ( delta >= MIN_HOLD_TIME( myputter.m_cur_map[row][col].hold_time ) &&  
+            ( delta <= MAX_HOLD_TIME( myputter.m_cur_map[row][col].hold_time) ) )
+            {
+                action = myputter.m_cur_map[row][col].hold_action;
+            }
+        }
+        else
+        {
+            last_hold = global_ticks;
+        } 
+    }       
+
     switch(action)
     {
         case KA_KEY_SCANCODE_ACTION:
@@ -319,9 +340,10 @@ void navputter_keypad_class::poll(void)
     switch( m_keypad_state )
     {
         case KP_SET_COLS:
-//                PORTD &= 0xf0;  // set low nibble to zero
-//                PORTD &= 0xf0;
-            PORTD =~ (1<<m_col);
+//            PORTD &= 0xf0;
+//            PORTD &= 0xf0;
+            PORTD &= 0xf0;
+            PORTD |= (0x0f & ~(1<<m_col));
             m_keypad_state = KP_WAIT;
             m_until = global_ticks + SETTLE_KEY_BOUNCE;
             m_next_state = KP_READ_ROWS;
@@ -362,9 +384,11 @@ void navputter_keypad_class::begin(void)
         m_until = 0;
         m_cur_rows = 0;
         memcpy( myputter.m_last_keystate, myputter.m_keystate, CONFIG.cols );
-        DDRD |= 0x0f;
+;
         DDRB = ~((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
         PORTB |= ((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
+        DDRD = 0xff;
+        PORTD = 0xf0;
         init_keys();
 }
 
@@ -501,7 +525,6 @@ void navputter_main_menu_class::handle_eeprom(void)
     navputter_eeprom_menu_class *em = new navputter_eeprom_menu_class( );
     myputter.set_menu(em);
 }
-
 
 void navputter_main_menu_class::serial_gpio(void)
 {
@@ -667,6 +690,11 @@ void navputter_gpio_menu_class::poll(void)
                 m_cmd = c;\
                 m_count = _count_;\
                 m_pos = 0;\
+                if ((c=='a')||(c=='A'))\
+                {\
+                    set_state( READ_PARAM);\
+                    return;\
+                }\
                 set_state( READ_PORT );\
                 return;\
             }
@@ -773,10 +801,9 @@ void navputter_gpio_menu_class::begin(void)
 void navputter_gpio_menu_class::usage(void)
 {
 #if LEAN_N_MEAN 
-    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write( _cmd_ ); SERIAL.write( "<PORT>" ); if (_params_) SERIAL.write("<value>  - "); SERIAL.write( EOLN );
+    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write("\t"); SERIAL.write( _cmd_ ); SERIAL.write( "  <PORT>" ); if (_params_) SERIAL.write("<value>"); SERIAL.write( EOLN );
         GPIO_MENU
     #undef _GM_
-    SERIAL.print( "&<port>[value|mask]%s", EOLN );
 #else
     #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.print( "%c)       %s%s", _cmd_, _desc_, EOLN );
         GPIO_MENU
@@ -940,6 +967,46 @@ void navputter_gpio_menu_class::gpio_out(void)
     }
     GPIO_PORTS
 #undef _GP_
+}
+
+
+#define GPIO_A2D_PIN_IX 1
+#define GPIO_A2D_REF_IX 0
+
+void navputter_gpio_menu_class::gpio_setup_a2d(void)
+{
+    uint16_t apin = m_params[GPIO_A2D_PIN_IX];
+    //uint8_t ref = m_params[GPIO_A2D_REF_IX];
+    //uint8_t admux = (ref << 6) | (apin & 0x0f);
+    //SERIAL.print("setting admux to %x\n", admux );
+    //ADMUX = admux;
+    //ADCSRA = (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
+    ADCSRA = (1<<ADEN);
+    ADMUX = 0x40;
+    apin = 0;
+    DIDR2 = ((1<<apin) & 0xff00) >> 8;
+    DIDR0 = ((1<<apin) & 0x00ff);
+    ADCSRA = ADCSRA | (1 << ADSC);
+    while(ADCSRA & (1 << ADSC))
+    {
+        DOG.kick();
+    }
+    uint16_t v = ADCL;
+    v |= (ADCH << 8 );
+    SERIAL.print("# a2d read %x (%x,%x)\n\r", v, ADCH, ADCL );
+}
+
+
+void navputter_gpio_menu_class::gpio_read_a2d(void)
+{
+    ADCSRA = ADCSRA | (1 << ADSC);
+    while(ADCSRA & (1 << ADSC))
+    {
+        DOG.kick();
+    }
+    uint16_t v = ADCL;
+    v |= (ADCH << 8 );
+    SERIAL.print("# a2d read %x (%x,%x)\n\r", v, ADCH, ADCL );
 }
 
 
@@ -1323,6 +1390,9 @@ void navputter_keycode_menu_class::format_key_action( uint8_t row, uint8_t col)
             {
                 case SA_TOGGLE_KEY_ARROWS:
                     sz += SERIAL.write("ArrowMode");
+                    break;
+                case SA_POWER_CYCLE:
+                    SERIAL.print("power cycle command\n\r"); 
                     break;
                 default:
                     myputter.error( ERROR_KEYMAP_INVALID_ACTION );

@@ -47,7 +47,8 @@ enum error_codes
 #define MAX_KEY_ARROW_STATE 2   /
 enum special_actions
 {
-    SA_TOGGLE_KEY_ARROWS = 0
+    SA_TOGGLE_KEY_ARROWS = 0,
+    SA_POWER_CYCLE,
 };
 
 
@@ -109,12 +110,16 @@ typedef struct __attribute__((packed)) eeprom_layout
     };
 }eeprom_layout_t;
 
+#define MIN_HOLD_TIME( _t_ ) ((_t_) & 0x0f)
+#define MAX_HOLD_TIME( _t_ ) (((_t_) & 0xf0) >> 4)
 
 typedef struct key_map
 {
-    uint8_t      action;
-    uint8_t      short_cut;
-    uint16_t     key_press[2];
+    uint8_t      action;                /* action on pressing the key */
+    uint8_t      short_cut;             /* char on the keypad for reference */
+    uint16_t     key_press[2];          /* up to 2 keys pressed */
+    uint8_t      hold_time;             /* bits 0-3 are min hold seconds bits 4-7 are max hold seconds */
+    uint8_t      hold_action;           /* KA_SPECIAL_ACTION after holding between min and max time and releasing */
 }key_map_t;
 
 
@@ -578,7 +583,9 @@ private:
     _GM_( '&', gpio_and,            1, "&<port><value>        - PORT<port> = PORT<port> & value\n\r")\
     _GM_( '|', gpio_or,             1, "|<port><value>        - PORT<port> = PORT<port> | value\n\r")\
     _GM_( 's', gpio_set_bit,        1, "s<port><pos>          - PORT<port> = PORT<port> | (1<<pos)\n\r")\
-    _GM_( 'c', gpio_clear_bit,      1, "c<port><pos>          - PORT<port> = PORT<port> & ~(1<<pos)\n\r")
+    _GM_( 'c', gpio_clear_bit,      1, "c<port><pos>          - PORT<port> = PORT<port> & ~(1<<pos)\n\r")\
+    _GM_( 'a', gpio_read_a2d,       1, "a<pin>                - read a to d from pin \n\r")\
+    _GM_( 'A', gpio_setup_a2d,      2, "A<pin><ref>           - configure a to d on pin. ref: 0=AREF, 1=AVCC, 2=reserved, 3=internal\n\r")\
 
 
 #define GPIO_PORTS\
@@ -601,6 +608,8 @@ public:
     void gpio_in_bit( void );
     void gpio_out( void );
     void gpio_xor( void );
+    void gpio_read_a2d( void );
+    void gpio_setup_a2d( void );
     void gpio_and( void ); 
     void gpio_or( void );
     void gpio_set_bit( void );
@@ -612,7 +621,7 @@ private:
     uint8_t m_cmd;                          // current command
     uint8_t m_pos;                          // current index in m_value for integer read
     uint8_t m_value[ MAX_INT_SIZE ];        // integer being read
-#define PARAMS_MAX                   1      // just 1 parameter for now
+#define PARAMS_MAX                   2      // 2 parameters max
     uint8_t m_params[ PARAMS_MAX ];         // array of parameters (8 bit)
     uint8_t m_count;                        // current parameter being read.
     uint8_t m_port;                         // gpio port (ascii lower case)
