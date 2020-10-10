@@ -197,6 +197,10 @@ extern "C" int main(void)
     myputter.set_menu( main_menu ); 
  
     PORTB |= 1; 
+
+    navputter_worker_pulse_class   work;
+    work.begin('d', 1, 10, 0, 10, 100 );
+    WORKERS.start_job( &work );
 	for (;;)
 	{
         PAD.poll();
@@ -1513,4 +1517,100 @@ void navputter_keycode_menu_class::quit_edit(void)
 }
 
 
-/** Configures the board hardware and chip peripherals for the demo's functionality. */
+void navputter_worker_class::start( void )
+{
+}
+
+void navputter_worker_class::done( void )
+{
+}
+
+void navputter_worker_class::run_job( void )
+{
+    if ( global_ticks >= (m_start + m_duration) )
+    {
+        SERIAL.print("base worker done at time %d\n", global_ticks );
+        set_state( WORKER_DONE );
+    }
+}
+
+
+void navputter_worker_pulse_class::start( void )
+{
+    set_state(WORKER_PULSE_ON);
+    SERIAL.print("starting pulse %s on port %c for %d msecs\n", (m_pin_state_1)?"ON":"OFF", m_port, m_hold_time_1 );
+}
+
+
+void navputter_worker_pulse_class::pulse_on(void)
+{
+    SERIAL.print("pulse on\n\r");
+}
+
+void navputter_worker_pulse_class::pulse_off(void)
+{
+    SERIAL.print("pulse off\n\r");
+}
+
+
+#define WORK_CYCLES_INFINITE 0xff
+void navputter_worker_pulse_class::run_job( void )
+{
+    switch( get_state() )
+    {
+        case WORKER_PULSE_ON:
+            pulse_on();
+            set_state( WORKER_WAITING );
+            m_wait_until = global_ticks + m_hold_time_1;
+            m_next_state = (m_cycles)? WORKER_PULSE_OFF : WORKER_DONE;
+            break;
+        case WORKER_PULSE_OFF:
+            pulse_off();
+            set_state( WORKER_WAITING );
+            m_wait_until = global_ticks + m_hold_time_2;
+            m_next_state = (m_cycles)? WORKER_PULSE_ON : WORKER_DONE;
+            break; 
+
+        case WORKER_WAITING:
+            if ( global_ticks >= m_wait_until )
+            {
+                set_state( m_next_state );
+                m_cycles = ( m_cycles == WORK_CYCLES_INFINITE )? m_cycles : m_cycles-1;
+            }
+            break;
+        default:
+            SERIAL.print("default case in worker\n\r");
+    }
+}
+
+void navputter_work_pool_class::start_job( navputter_worker_class *job )
+{
+    if ( job->is_running() )
+    {
+        myputter.error( ERROR_JOB_RUNNING );
+        return;
+    }
+    job->set_state( WORKER_STARTING );
+    job->set_start( global_ticks );
+    add_job_list(job);
+    job->start();
+}
+
+void navputter_timer_class::poll(void)
+{
+    if ( global_ticks >= m_call_next )
+    {
+        m_call_next = global_ticks + m_interval;
+        tick();
+    }
+    if ( m_last_work != global_ticks )
+    {
+        m_last_work = global_ticks;
+        WORKERS.tick();
+    }
+}
+
+
+
+
+

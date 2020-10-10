@@ -42,6 +42,7 @@ enum error_codes
     ERROR_KEYMAP_OUT_OF_RANGE,
     ERROR_KEYMAP_NOT_A_NUMBER,
     ERROR_KEYMAP_INVALID_ACTION,
+    ERROR_JOB_RUNNING,
 };
 
 #define MAX_KEY_ARROW_STATE 2   /
@@ -361,9 +362,207 @@ class navputter_serial_class : public usb_serial_class
 };
 
 
+enum worker_states
+{
+    WORKER_STATE_INVALID = 0,
+    WORKER_STARTING,
+    WORKER_PULSE_ON,
+    WORKER_PULSE_OFF,
+    WORKER_WAITING,
+    WORKER_DONE
+};
 
 
 
+
+class navputter_worker_class
+{
+public:
+    void begin(uint32_t duration)
+    {
+        m_running = false;
+        m_state = WORKER_STATE_INVALID;
+        m_duration = duration; 
+    }
+
+    uint8_t get_state( void )
+    {
+        return m_state;
+    }
+
+    void set_state( uint8_t new_state )
+    {
+        m_state = new_state;
+    }
+
+    void set_start( uint32_t ticks )
+    {
+        m_start = ticks;
+    }
+
+    bool is_running( void ) 
+    {
+        return m_running;
+    }
+
+    void running( bool tf )
+    {
+        m_running = tf;
+    }
+
+    class navputter_worker_class *get_next_job( void ) 
+    {
+        return m_next;
+    }
+
+    class navputter_worker_class *get_prev_job( void ) 
+    {
+        return m_prev;
+    }
+
+    void set_next_job( class navputter_worker_class *job )
+    {
+        m_next = job;
+    }
+    
+    void set_prev_job( class navputter_worker_class *job )
+    {
+        m_prev = job;
+    }
+
+
+    virtual void start( void );
+    virtual void done( void );
+    virtual void run_job( void );
+
+
+private:
+    uint32_t    m_start;
+    uint8_t     m_state;
+    bool        m_running;
+    uint32_t    m_duration;
+    class navputter_worker_class *m_next;
+    class navputter_worker_class *m_prev;
+};
+
+    
+class navputter_worker_pulse_class : public navputter_worker_class
+{
+public:
+    void begin( 
+        uint8_t     port,
+        uint8_t     pin_state_1,
+        uint16_t    hold_time_1,
+        uint8_t     pin_state_2,
+        uint16_t    hold_time_2,
+        uint16_t    cycles
+    )
+    {
+        m_port = port;
+        m_pin_state_1 = pin_state_1;
+        m_pin_state_2 = pin_state_2;
+        m_hold_time_1 = hold_time_1;
+        m_hold_time_2 = hold_time_2;
+        m_cycles = cycles;
+    }
+
+    void start(void);
+
+    virtual void run_job();
+
+    virtual void pulse_on(void);
+    virtual void pulse_off(void);
+
+private:
+
+    uint8_t m_port;
+    uint8_t m_pin_state_1;
+    uint8_t m_pin_state_2;
+    uint16_t m_hold_time_1;
+    uint16_t m_hold_time_2;
+    uint16_t m_cycles;
+    uint8_t  m_next_state;
+    uint32_t m_wait_until;
+};
+ 
+
+class navputter_work_pool_class
+{
+public:
+    void begin( void )
+    {
+        m_job_head = NULL;
+        m_job_tail = NULL;
+    }
+
+    void start_job( navputter_worker_class *job );
+
+    void tick()
+    {
+        navputter_worker_class *j;
+        for ( j=first_job(); j; j=next_job(j) )
+        {
+            j->run_job();
+            if ( j->get_state() == WORKER_DONE )
+            {
+                end_job(j);
+            }
+        }
+    }
+private:
+    void end_job( navputter_worker_class *job )
+    {
+        job->running(false);
+        remove_job(job);
+        job->done();
+    }    
+
+    void add_job_list( navputter_worker_class *job )
+    {
+        if ( !m_job_tail )
+        {
+            m_job_head = m_job_tail = job;
+        }
+        else
+        {
+            m_job_tail->set_next_job( job );
+            job->set_prev_job( m_job_tail );
+            job->set_next_job( NULL );
+            m_job_tail = job;
+        }
+    }
+
+    navputter_worker_class *m_job_head;
+    navputter_worker_class *m_job_tail;
+
+    navputter_worker_class *first_job( void ) 
+    {
+        return m_job_head;
+    }
+
+    navputter_worker_class *next_job( navputter_worker_class *job )
+    {
+        return job->get_next_job();
+    }
+
+    void remove_job( navputter_worker_class *job )
+    {
+        navputter_worker_class *nextjob = job->get_next_job();
+        navputter_worker_class *prevjob = job->get_prev_job();
+
+        if ( m_job_head == job ) 
+        {
+            m_job_head = nextjob;
+        }
+        if ( m_job_tail == job )
+        {
+            m_job_tail = prevjob;
+        }
+        if ( nextjob ) nextjob->set_prev_job( prevjob );
+        if ( prevjob ) prevjob->set_next_job( nextjob );
+    }
+
+};
 
 class navputter_timer_class
 {
@@ -380,22 +579,17 @@ public:
         m_call_next = 0xffffffff;
     }
 
-    void poll()
-    {
-        if ( global_ticks >= m_call_next )
-        {
-            m_call_next = global_ticks + m_interval;
-            tick();
-        }
-    }
+    void poll();
 
-    void virtual tick()
+    void tick()
     {
         if ( m_callback ) m_callback();
     }
+
 private:
     void (*m_callback)(void);
     uint32_t m_call_next;
+    uint32_t m_last_work;
     uint32_t m_interval;
 };     
 
@@ -861,6 +1055,7 @@ public:
         m_serial.begin(9600);
         m_keyboard.begin();
         m_timer.begin( NULL, 1000 );
+        m_workers.begin();
         m_watchdog.begin();
         m_keypad.begin();
         m_mouse.begin();
@@ -910,6 +1105,7 @@ public:
 
     lufa_mouse_class            m_mouse;
     navputter_timer_class       m_timer;
+    navputter_work_pool_class   m_workers;
     navputter_watchdog_class    m_watchdog; 
     navputter_serial_class      m_serial;
     usb_keyboard_class          m_keyboard;
@@ -927,6 +1123,7 @@ public:
 #define DOG     myputter.m_watchdog
 #define MOUSE   myputter.m_mouse
 #define TIMER   myputter.m_timer
+#define WORKERS myputter.m_workers
 #define KEY     myputter.m_keyboard
 #define PAD     myputter.m_keypad
 #define PROM    myputter.m_eeprom
