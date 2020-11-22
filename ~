@@ -2,7 +2,7 @@
 ******************************************************************************
 * Navputer - get from here to here without hitting a whale.
 ******************************************************************************
-* Copyright (c) 2018-2020 Seth Keith. All rights reserved.
+* Copyright (c) 2020 Seth Keith. All rights reserved.
 ******************************************************************************
 *
 *         .-'           Watch out for me!
@@ -19,7 +19,6 @@
 * lookout for whales and still have a usable opencpn mounted at your helm.
 * It is better having a static slow response (putt) then a mouse moving all 
 * over the place whilst you are dodging whales. 
-******************************************************************************
 ******************************************************************************
 */
 
@@ -121,6 +120,10 @@ void navputter_yield(void);
 void *eeprom_start = NULL;
 
  
+
+
+#define LINE "--------------------------------------------------------------------------------"
+
 
 void start_timer(uint32_t msecs)
 {
@@ -513,7 +516,8 @@ void navputter_keypad_class::trigger()
 #endif
 }
 
-const char global_eeprom_string[] PROGMEM = "EEPROM %s. ver=%x%s";
+const char global_eeprom_reset_str[] PROGMEM = "EEPROM reset. ver=%x%s";
+const char global_eeprom_read_str[] PROGMEM = "EEPROM read ver %x%s";
 
 void navputter_eeprom_class::init(void)
 {
@@ -529,12 +533,12 @@ void navputter_eeprom_class::init(void)
     {
         memcpy( (void *)&CONFIG, (void *)&hdr_default, sizeof( hdr_default ) );
         write((void *)&CONFIG, sizeof(CONFIG));
-        SERIAL.print_P( global_eeprom_string,  "RESET.", hdr_default.version, EOLN);
+        SERIAL.print_P( global_eeprom_reset_str,  hdr_default.version, EOLN);
     }
     else
     {
         memcpy( (void *)&CONFIG, (void *)&hdr, sizeof( hdr_default ) );
-        SERIAL.print_P( global_eeprom_string, "read.",  hdr.version, EOLN );
+        SERIAL.print_P( global_eeprom_read_str, hdr.version, EOLN );
         if ( CONFIG.default_keymap != BUILT_IN_MAP )
         {
             myputter.read_eeprom_keymap();
@@ -648,7 +652,7 @@ void navputter_main_menu_class::handle_keymaps(void)
 void navputter_eeprom_menu_class::begin(void)
 {
     SERIAL.print_P( global_eeprom_string_2, EOLN, EOLN, EOLN);
-    read_command();
+    set_state(READ_COMMAND);
 }
 
 void navputter_eeprom_menu_class::end(void)
@@ -669,6 +673,7 @@ int navputter_eeprom_menu_class::validate_keymap( int cmd, int val )
     return 0;
 }
 
+
 void navputter_eeprom_menu_class::poll(void)
 {
     uint8_t c;
@@ -679,13 +684,14 @@ void navputter_eeprom_menu_class::poll(void)
             if ( c == 0xff ) return;
             if ( (c == '\n') || (c=='\r'))
             {
-                set_value();
-
+                m_int_value[m_position]=0;
+                set_state( SET_VALUE );
             }
             else if ( !isdigit( c ) )
             {
                 myputter.error( ERROR_EEPROM_ILLEGAL_VALUE );
-                read_command();
+                usage();
+                set_state( READ_COMMAND );
             }
             else
             {
@@ -693,7 +699,7 @@ void navputter_eeprom_menu_class::poll(void)
                 if ( m_position == sizeof( m_int_value ) )
                 {
                     myputter.error( ERROR_EEPROM_INT_SIZE );
-                    read_command();
+                    set_state( READ_COMMAND );
                 }
                 else SERIAL.write(c);
             }
@@ -705,7 +711,8 @@ void navputter_eeprom_menu_class::poll(void)
             #define _ED_(_cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_) \
             if ( m_command == _cmd_ ) \
             {\
-                read_int();\
+                set_state( READ_INT );\
+                m_position =0;\
                 SERIAL.print("INT:%s", EOLN);\
                 return;\
             }
@@ -728,7 +735,7 @@ void navputter_eeprom_menu_class::poll(void)
             #define _ED_(_cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_) \
             if ( m_command == _cmd_ ) \
             {\
-                read_command();\
+                set_state( READ_COMMAND );\
                 int i = atoi((const char *)m_int_value);\
                 if ( (i < _min_) || (i > _max_) )\
                 {\
@@ -746,7 +753,8 @@ void navputter_eeprom_menu_class::poll(void)
             } 
                 _EEPROM_DESC_
             #undef _ED_
-            read_command();
+            usage();
+            set_state( READ_COMMAND );
             break;
         default:
             myputter.error( ERROR_EEPROM_BAD_STATE );
@@ -782,7 +790,7 @@ void navputter_gpio_menu_class::poll(void)
                 m_pos = 0;\
                 if ((c=='a')||(c=='A'))\
                 {\
-                    read_param();\
+                    set_state( READ_PARAM);\
                     return;\
                 }\
                 set_state( READ_PORT );\
@@ -802,7 +810,7 @@ void navputter_gpio_menu_class::poll(void)
                 m_port = c;
                 if ( m_count )
                 {
-                    read_param();
+                    set_state( READ_PARAM );
                 }
                 else 
                 {
@@ -820,7 +828,7 @@ void navputter_gpio_menu_class::poll(void)
                 if ( m_pos == sizeof( m_value ) )
                 {
                     myputter.error( ERROR_GPIO_BAD_SIZE );
-                    read_command();
+                    set_state(READ_COMMAND);
                     return;
                 }  
 #define HEX_WORD_READ_SIZE 2
@@ -832,7 +840,7 @@ void navputter_gpio_menu_class::poll(void)
             else
             {
                 myputter.error( ERROR_GPIO_BAD_SIZE );
-                read_command();
+                set_state(READ_COMMAND);
             }
             break;
         case CONVERT_VALUE:
@@ -842,7 +850,8 @@ void navputter_gpio_menu_class::poll(void)
                 set_state(CALL_FUNC);
             else 
             {
-                read_param();
+                m_pos=0;
+                set_state(READ_PARAM);
             }
             break;
         case CALL_FUNC:
@@ -853,7 +862,7 @@ void navputter_gpio_menu_class::poll(void)
             }
             GPIO_MENU
 #undef _GM_
-            read_command();
+            set_state( READ_COMMAND );\
             break; 
         default:
             myputter.error( ERROR_GPIO_BAD_CASE );
@@ -881,12 +890,12 @@ void navputter_gpio_menu_class::end(void)
 
 void navputter_gpio_menu_class::begin(void)
 {
-    read_command();
+    set_state( READ_COMMAND );
+    SERIAL.print("%sGPIO Menu:%s", EOLN, EOLN);
 }
 
 void navputter_gpio_menu_class::usage(void)
 {
-    SERIAL.print("%sGPIO Menu:%s", EOLN, EOLN);
 #if LEAN_N_MEAN 
     #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write("\t"); SERIAL.write( _cmd_ ); SERIAL.write( "  <PORT>" ); if (_params_) SERIAL.write("<value>"); SERIAL.write( EOLN );
         GPIO_MENU
@@ -1087,7 +1096,7 @@ void navputter_gpio_menu_class::gpio_read_a2d(void)
 
 void navputter_keycode_menu_class::begin(void)
 {
-    read_command();
+    set_state( READ_COMMAND );
     memcpy( &m_key_map, myputter.get_map(),sizeof(m_key_map));
     memcpy( &m_key_seq_map, myputter.get_seq_map(),sizeof(m_key_seq_map));
 }
@@ -1158,6 +1167,7 @@ void navputter_keycode_menu_class::keycode_edit_usage(void)
 
 
 
+ 
 void navputter_keycode_menu_class::poll(void)
 {
     uint8_t c;
@@ -1182,7 +1192,8 @@ void navputter_keycode_menu_class::poll(void)
             if ( c == 0xff ) return;
             if ( c == 'q' )
             {
-                read_command();
+                set_state( READ_COMMAND );
+                usage();
                 break;
             }
             else if ( c == 'w' )
@@ -1232,7 +1243,8 @@ void navputter_keycode_menu_class::poll(void)
                         set_state( LOAD_KEYMAP );
                 }
                 myputter.error( ERROR_KEYMAP_NOT_A_NUMBER );
-                read_command();
+                set_state( READ_COMMAND );
+                usage();
             }
             else
             {
@@ -1247,10 +1259,12 @@ void navputter_keycode_menu_class::poll(void)
             if (( c > CONFIG.key_maps )||(c<0))
             {
                 myputter.error( ERROR_KEYMAP_OUT_OF_RANGE );
-            
+                set_state( READ_COMMAND );
+                return;
             }
             save_keymap_to_eeprom( c ); 
-            read_command();
+            usage();
+            set_state( READ_COMMAND );
             break;
         case READ_SAVE_INT:
             c = SERIAL.read();
@@ -1273,7 +1287,7 @@ void navputter_keycode_menu_class::poll(void)
                     }       
                 }
                 myputter.error( ERROR_KEYMAP_NOT_A_NUMBER );
-                read_command();
+                set_state( READ_COMMAND );
             }
             else
             {
@@ -1286,25 +1300,22 @@ void navputter_keycode_menu_class::poll(void)
             #define _KPM_( _key_, _str_, _func_ ) if ( c == _key_ ) _func_();
             KEY_PIN_MENU
             #undef _KPM_
-            if ( c != 'q' ) edit_pin_map_usage();
+            edit_pin_map_usage();
             break;
         case EDIT_PIN_ENTRY:
             c = SERIAL.read();
             if ( c == 0xff ) return;
-            if ( isdigit(c) )
+            if ( !isdigit(c) )
             {
-                m_int_value[m_int_ix++]=c;
+                edit_pin_entry();
             }
+            m_int_value[m_int_ix++]=c;
             if ( m_int_ix >= 1 )
             {
                 uint8_t i = atoi((const char *)m_int_value);
-                m_key_map[m_edit_pin_row][m_edit_pin_col] = i;
+                SERIAL.print("read %d\n\r", i );
+                edit_pin_entry();
             }
-            else 
-            {
-                m_key_map[m_edit_pin_row][m_edit_pin_col] = 0xff;
-            } 
-            edit_pin_map();
             break;
 
         default: 
@@ -1317,7 +1328,7 @@ void navputter_keycode_menu_class::poll(void)
 
 void navputter_keycode_menu_class::edit_pin_field_usage(void)
 {
-    SERIAL.print("edit\n\r");
+    SERIAL.print("edit");
 }
 
 
@@ -1460,8 +1471,8 @@ void navputter_keycode_menu_class::load_keymap(void)
     if ( CONFIG.key_maps == 0 )
     {
         SERIAL.print_P( global_keycode_error_no_keymaps_str, EOLN, EOLN, EOLN );
-        read_command();
-    } SERIAL.print_P( global_keycode_load_str, CONFIG.key_maps, EOLN);  
+        usage();
+        set_state( READ_COMMAND ); return; } SERIAL.print_P( global_keycode_load_str, CONFIG.key_maps, EOLN);  
     set_state( READ_LOAD_INT );
 }
 
@@ -1500,9 +1511,7 @@ const char global_dump_keymap_string_5[] PROGMEM = "Row %2.2d: ";
 
 void navputter_keycode_menu_class::edit_pin_map(void)
 {
-    #define _KPM_( _key_, _str_, _func_) SERIAL.print("%c) %s%s", _key_, _str_, EOLN );
-    KEY_PIN_MENU
-    #undef _KPM_
+    SERIAL.print_P(global_dump_keymap_string_4, EOLN);
     m_edit_pin_row = 0;
     m_edit_pin_col = 0;
     m_int_ix = 0;
@@ -1513,7 +1522,6 @@ void navputter_keycode_menu_class::edit_pin_map(void)
 void navputter_keycode_menu_class::edit_pin_map_usage()
 {
     uint8_t r, c;
-    SERIAL.print_P(global_dump_keymap_string_4, EOLN);
     for (r=0; r< MAX_KEY_ROWS; r++)
     {
         SERIAL.print_P(global_dump_keymap_string_5,r);
@@ -1533,12 +1541,33 @@ void navputter_keycode_menu_class::edit_pin_map_usage()
         }
         SERIAL.print(EOLN);
     }
-    SERIAL.print(EOLN);
 } 
 
 void navputter_keycode_menu_class::dump_keymap(void)
 {
+//    uint8_t i;
+
+    SERIAL.print_P( global_dump_keymap_string_0 );
+#define KP_KEY( _sc_, _seq_, _act_, _x_, _y_ )\
+    SERIAL.print_P( global_progmem_keycode_editmenu_format_string, (_x_==0)?EOLN:"", _sc_);
+    KP_KEY_LIST
+#undef KP_KEY
+    SERIAL.print_P( global_dump_keymap_string_3 );
+// FIXME:
+    //memcpy( m_key_map, base_map, sizeof( base_map ) );
     show_keymap();
+    SERIAL.write( EOLN );
+
+// FIXME
+#if 0
+    for ( i=0; i< CONFIG.key_maps; i++ )
+    {
+        SERIAL.print_P( global_dump_keymap_string_1,i,EOLN,EOLN);
+        PROM.read( m_key_map, sizeof(m_key_map), EEPROM_KEYMAP_START + i* KEY_MAP_SIZE );
+        show_keymap();
+        SERIAL.write( EOLN );
+    }
+#endif
 }
 
 
@@ -1559,7 +1588,8 @@ void navputter_keycode_menu_class::quit(void)
 
 void navputter_keycode_menu_class::quit_edit(void)
 {
-    read_command();
+    set_state( READ_COMMAND );
+    usage();
 }
 
 

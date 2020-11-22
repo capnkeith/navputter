@@ -1,8 +1,9 @@
+
 /* 
 ******************************************************************************
 * Navputer - get from here to here without hitting a whale.
 ******************************************************************************
-* Copyright (c) 2018-2020 Seth Keith. All rights reserved.
+* Copyright (c) 2020 Seth Keith. All rights reserved.
 ******************************************************************************
 *
 *         .-'           Watch out for me!
@@ -20,10 +21,7 @@
 * It is better having a static slow response (putt) then a mouse moving all 
 * over the place whilst you are dodging whales. 
 ******************************************************************************
-******************************************************************************
 */
-
-
 
 #include <assert.h>
 #include <stdio.h>
@@ -33,9 +31,8 @@
 #include <avr/pgmspace.h>
 #include "navputter.h"
 
-#define EEPROM_KEYMAP_START 32
 uint8_t global_tmp_buf[MAX_TMP_BUFFER_SIZE];
-char global_str_ok[] = "OK.\n\r";
+char global_str_ok[] = "OK.";
 char global_str_eoln[] = "\n\r";
 
 #define EOLN     global_str_eoln 
@@ -79,6 +76,35 @@ ISR (TIMER1_COMPA_vect)
 void start_timer(uint32_t msecs);
 
 
+#define SCANCODE( mod, key ) ((((uint16_t)mod)<<8)|key)
+#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS )}      /* alt + gives slow zoom in */
+#define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, '3', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)} /* alt - gives slow zoom out */
+#define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, 'a', SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                              /* f2 is follow */
+#define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, 'b', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                    /* ctrl r is route */
+#define COLOR_KEY          {KA_KEY_SCANCODE_ACTION, 'c', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTALT,  HID_KEYBOARD_SC_C)}                    /* alt C is color change */
+#define MOB_KEY            {KA_KEY_SCANCODE_ACTION, 'd', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_SPACE)}                /* mob is ctrl space */ 
+#define TOGGLE_KEY_ARROWS  {KA_SPECIAL_ACTION,      '7', SA_TOGGLE_KEY_ARROWS}                                                           /* toggler mouse, slow key, fast key*/
+
+/* these mouse moves have 2 additional arguments, a slow key scancode, and a fast key scancodes used in the key arrow modes instead of mouse moves.
+   so, MOUSE_UP will be a mouse action in key_arrow mode 0, an ALT up arrow in key_arrow mode 1 and an up arrow in key mode 2.                      */ 
+#define MOUSE_UP           {KA_MOUSE_UP,    '2', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_UP_ARROW ),    SCANCODE( 0,HID_KEYBOARD_SC_UP_ARROW)}  
+#define MOUSE_LEFT         {KA_MOUSE_LEFT,  '4', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_LEFT_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
+#define MOUSE_RIGHT        {KA_MOUSE_RIGHT, '6', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
+#define MOUSE_DOWN         {KA_MOUSE_DOWN,  '8', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_DOWN_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_DOWN_ARROW)}  
+
+
+key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
+{
+        { ZOOM_IN_KEY,            MOUSE_UP,             ZOOM_OUT_KEY,               FOLLOW_KEY },
+        { MOUSE_LEFT,             {KA_MOUSE_STEP, '5'}, MOUSE_RIGHT,                ROUTE_KEY  },
+        { TOGGLE_KEY_ARROWS,      MOUSE_DOWN,           {KA_REPORT_KEY,'9'},        COLOR_KEY  },
+        {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'},  {KA_MOUSE_RT_CLICK,'#'},    MOB_KEY    }
+};
+
+
+#define KEY_MAP_SIZE sizeof(base_map)
+
+
 /* this is the serial interface. */
 extern USB_ClassInfo_CDC_Device_t VirtualSerial_CDC_Interface;
 
@@ -93,11 +119,7 @@ void ser_push( uint8_t c )
 
 void init_keys(void)
 {
-    SERIAL.print("setting keymap. v[0][0]=%d\n", myputter.m_cur_map[0][0] );
-    myputter.set_keymap();
-    SERIAL.print("setting keymap. v[0][0]=%d\n", myputter.m_cur_map[0][0] );
-    myputter.set_seq_map();
-    SERIAL.print("setting seq map, seq 0=%d\n", myputter.m_seq_map[0].action );
+    myputter.set_keymap( (key_map_t *)base_map, sizeof( base_map ));
 }
 
 FILE *gfp=NULL;
@@ -114,6 +136,8 @@ void navputter_yield(void);
 
 
 
+#define MAX_KEY_ROWS        4
+#define MAX_KEY_COLS        4
 #define MAX_KEY_SEQ         32
 #define MAX_KEYS_PER_SEQ    4
 
@@ -121,6 +145,10 @@ void navputter_yield(void);
 void *eeprom_start = NULL;
 
  
+
+
+#define LINE "--------------------------------------------------------------------------------"
+
 
 void start_timer(uint32_t msecs)
 {
@@ -157,7 +185,6 @@ extern "C" void get_mouse_status( int8_t *y, int8_t *x, uint8_t *buttons )
 
 extern "C" int main(void)
 {
-
     PUTT=&myputter;
     myputter.begin();
     myputter.big_whale();
@@ -167,9 +194,7 @@ extern "C" int main(void)
     navputter_main_menu_class *main_menu = new navputter_main_menu_class();
     myputter.set_menu( main_menu ); 
  
-    navputter_worker_pulse_class   work;
-    work.begin('d', 1, 10, 0, 10, 100 );
-    WORKERS.start_job( &work );
+    PORTB |= 1; 
 	for (;;)
 	{
         PAD.poll();
@@ -180,6 +205,7 @@ extern "C" int main(void)
     }
 }
 
+#define EEPROM_KEYMAP_START 32
 
 void navputter_eeprom_class::write( void *buf, uint32_t len, size_t offset )
 {
@@ -214,54 +240,29 @@ int navputter_serial_class::read(void)
 
 
 
-const char show_key_string[] PROGMEM = "show key r:%d c:%d seq:%d\n\r";
 
 void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
 {
-//    row = (CONFIG.flip_rows)?CONFIG.rows - row - 1:row;
-//    col = (CONFIG.flip_cols)?CONFIG.cols - col - 1:col;
+    row = (CONFIG.flip_rows)?CONFIG.rows - row - 1:row;
+    col = (CONFIG.flip_cols)?CONFIG.cols - col - 1:col;
 
-    uint8_t seq = myputter.m_cur_map[row][col];
-    uint8_t action = myputter.m_seq_map[seq].action;
-    static uint32_t last_hold = 0;
-
-    if ( myputter.m_seq_map[seq].hold_action )
-    {
-        if (event == EVENT_KEYPAD_UP)
-        {
-            uint32_t delta = global_ticks - last_hold;
-            delta /= 1000;
-            if ( delta >= MIN_HOLD_TIME( myputter.m_seq_map[seq].hold_time ) &&  
-            ( delta <= MAX_HOLD_TIME( myputter.m_seq_map[seq].hold_time) ) )
-            {
-                action = myputter.m_seq_map[seq].hold_action;
-            }
-        }
-        else
-        {
-            last_hold = global_ticks;
-        } 
-    }       
-
+    uint8_t action = myputter.m_cur_map[row][col].action;
     switch(action)
     {
         case KA_KEY_SCANCODE_ACTION:
             if ( event == EVENT_KEYPAD_DOWN )
             {
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[0] );
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[1] );
+                KEY.write_scancode( myputter.m_cur_map[row][col].key_press[0] );
+                KEY.write_scancode( myputter.m_cur_map[row][col].key_press[1] );
             }
         break;
         case KA_SPECIAL_ACTION:
             if ( event == EVENT_KEYPAD_DOWN )
             {
-                switch( myputter.m_seq_map[seq].key_press[0] )
+                switch( myputter.m_cur_map[row][col].key_press[0] )
                 {
                     case SA_TOGGLE_KEY_ARROWS:
                         CONFIG.key_arrows = (CONFIG.key_arrows < ARROW_CONFIG_FAST_KEY ) ?  CONFIG.key_arrows + 1 : 0;
-                        break;
-                    case SA_SHOW_KEY:
-                        SERIAL.print_P( show_key_string, row, col, seq );
                         break;
                     default:
                         break;
@@ -279,16 +280,16 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             }
             else if ( CONFIG.key_arrows == ARROW_CONFIG_SLOW_KEY )
             {
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[0] );
+                KEY.write_scancode( myputter.m_cur_map[row][col].key_press[0] );
             }
             else
             {
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[1] );
+                KEY.write_scancode( myputter.m_cur_map[row][col].key_press[1] );
             }
             break;
         case KA_REPORT_KEY:
 #ifndef LEAN_N_MEAN
-            SERIAL.print("# report %s : %d,%d = %c%s", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, myputter.m_seq_map[seq].key_press[0], EOLN );
+            SERIAL.print("# report %s : %d,%d = %c%s", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, myputter.m_cur_map[row][col].key_press[0], EOLN );
 #endif
             break;
         case KA_MOUSE_LT_CLICK:
@@ -313,87 +314,14 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
     }
 }
 
-void navputter_tenkey_keypad_class::begin()
-{
-    memset( m_keystate, INVALID_KEYSTATE, sizeof( m_keystate ) );
-
-
-
-    /* turn all the col bits on (active low) w/ pullup resistor */
-    #define _K_PIN_( _ev_, _ddr_, _port_, _pn_, _pin_ ) \
-        _ddr_ |= (1<<_pin_);                               /* set col bits _pin_ as output */ \
-        _port_ &= ~(1<<_pin_);                             /* set output value at bit _pin_ to 0 */  
-        COL_PINS                                           /* do it for all col bits */
-    #undef _K_PIN_
-
-   
-    /* set all the rows to be inputs. */
-    #define _K_PIN_( _ev_, _ddr_, _port_, _pn_, _pin_ ) \
-        _ddr_ &= ~(1<<_pin_);                              /* set rows to be inputs */ \
-        ROW_PINS                                           /* do it for all row bits */
-    #undef _K_PIN_
-    init_keys();
-}
-
-
-
-void navputter_tenkey_keypad_class::poll(void)
-{
-    
-    switch( m_keypad_state )
-    {
-        case KP_SET_COLS:
-#define _K_PIN_( _e_, _ddr_, _port_, _pn_, _pin_ ) \
-            if ( _e_ == m_col )                              /* just for for pin number m_col */ \
-            {\
-                _port_ &= ~(1 << _pin_);                     /* clear the bit for the pin m_col (active low)*/ \
-            }\
-            else\
-            {\
-                _port_ |= (1<<_pin_);                       /* set all other bits high (active low off) */\
-            }
-            COL_PINS
-#undef _K_PIN_
-            m_keypad_state = KP_WAIT;
-            m_until = global_ticks + SETTLE_KEY_BOUNCE;
-            m_next_state = KP_READ_ROWS;
-            break;
-
-        case KP_WAIT:
-            if ( global_ticks < m_until ) return;
-            m_keypad_state = m_next_state;
-            break;
-
-        case KP_READ_ROWS:
-#define _K_PIN_( _e_, _ddr_, _port_, _pn_, _pin_ ) \
-            {\
-                uint8_t v;\
-                v = ((_pn_ & (1<<_pin_)) >> _pin_ );\
-                m_keystate[ m_col ] = m_keystate[ m_col ] & ~(1<<_e_);       /* turn bit off first */ \
-                m_keystate[ m_col ] = m_keystate[ m_col ] | (v<<_e_);        /* then set bit to value of v */  \
-            }
-            ROW_PINS
-#undef _K_PIN_
-
-            m_col = ((m_col+1) < CONFIG.cols )? m_col + 1 : 0;
-            m_keypad_state =KP_SET_COLS;
-            if ( m_col == 0 ) trigger();
-            break;
-        default:
-            break;
-    }
-}
-
-
 void navputter_keypad_class::poll(void)
 {
     switch( m_keypad_state )
     {
         case KP_SET_COLS:
-//            PORTD &= 0xf0;
-//            PORTD &= 0xf0;
-            PORTD &= 0xf0;
-            PORTD |= (0x0f & ~(1<<m_col));
+//                PORTD &= 0xf0;  // set low nibble to zero
+//                PORTD &= 0xf0;
+            PORTD =~ (1<<m_col);
             m_keypad_state = KP_WAIT;
             m_until = global_ticks + SETTLE_KEY_BOUNCE;
             m_next_state = KP_READ_ROWS;
@@ -411,7 +339,7 @@ void navputter_keypad_class::poll(void)
                 READ_PIN_BIT_INTO( 2, PINB, KEYPAD_BIT_B2 ) |
                 READ_PIN_BIT_INTO( 3, PINB, KEYPAD_BIT_B3 );
 
-            m_keystate[m_col] = m_cur_rows;
+            myputter.m_keystate[m_col] = m_cur_rows;
             m_keypad_state =KP_SET_COLS;
             m_col++;
             if ( m_col >= CONFIG.cols ) 
@@ -428,92 +356,52 @@ void navputter_keypad_class::poll(void)
 
 void navputter_keypad_class::begin(void)
 {
-        memset(m_keystate, INVALID_KEYSTATE, sizeof( m_keystate));  
-        memcpy(m_last_keystate, m_keystate, sizeof( m_last_keystate ));
-        memset(m_keypress, 0, sizeof( m_keypress));
-        memset(m_keydown, 0, sizeof( m_keypress));
-
         m_keypad_state = KP_SET_COLS;
         m_next_state=0xff;
         m_col=0;
         m_until = 0;
         m_cur_rows = 0;
-
+        memcpy( myputter.m_last_keystate, myputter.m_keystate, CONFIG.cols );
+        DDRD |= 0x0f;
         DDRB = ~((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
         PORTB |= ((1<<KEYPAD_BIT_B0)|(1<<KEYPAD_BIT_B1)|(1<<KEYPAD_BIT_B2)|(1<<KEYPAD_BIT_B3));
-        DDRD = 0xff;
-        PORTD = 0xf0;
-
         init_keys();
 }
 
-void navputter_tenkey_keypad_class::trigger()
-{
-	uint8_t col;
-	uint8_t row;
-    for ( col=0; col< CONFIG.cols; col++ )
-    {
-        if ( m_keystate[col] != m_last_keystate[col] )
-        {
-            for ( row=0; row< CONFIG.rows; row++ )
-            {
-                if ( !(m_keystate[col] & (1<<row)) )
-                {
-                    if ( !(m_keydown[col] & (1<<row)) )
-                    {
-						press( EVENT_KEYPAD_DOWN, row, col );
-                    }
-                    m_keydown[col] |= (1<<row);
-                }
-                else
-                {
-                    if (m_keydown[col] & (1<<row))
-                    {
-                        m_keydown[col] &= ~(1<<row);
-						press( EVENT_KEYPAD_UP, row, col );
-                    } 
-                }
-            }
-            m_last_keystate[col] = m_keystate[col]; 
-        }
-    }
-}       
-
 void navputter_keypad_class::trigger()
 {
-#if 0
 		uint8_t col;
 		uint8_t row;
         for ( col=0; col< CONFIG.cols; col++ )
         {
-            if ( m_keystate[col] != m_last_keystate[col] )
+            if ( myputter.m_keystate[col] != myputter.m_last_keystate[col] )
             {
 				for ( row=0; row< CONFIG.rows; row++ )
 				{
-					if ( m_keystate[col] & (1<<row) )
+					if ( myputter.m_keystate[col] & (1<<row) )
 					{
-						if ( m_keypress[row][col]  != EVENT_KEYPAD_UP)
+						if ( myputter.m_keypress[row][col]  != EVENT_KEYPAD_UP)
 						{
 							press( EVENT_KEYPAD_UP, row, col );
 						}
-						m_keypress[row][col] = EVENT_KEYPAD_UP; 
+						myputter.m_keypress[row][col] = EVENT_KEYPAD_UP; 
 					}
 					else
 					{
-						if ( m_keypress[row][col] != EVENT_KEYPAD_DOWN )
+						if ( myputter.m_keypress[row][col] != EVENT_KEYPAD_DOWN )
 						{
 							press( EVENT_KEYPAD_DOWN, row, col);
 						}
-						m_keypress[row][col] = EVENT_KEYPAD_DOWN; 
+						myputter.m_keypress[row][col] = EVENT_KEYPAD_DOWN; 
 					}
 				 }
             }
-            m_last_keystate[col] = m_keystate[col]; 
+            myputter.m_last_keystate[col] = myputter.m_keystate[col]; 
         }
-#endif
 }
 
-const char global_eeprom_string[] PROGMEM = "EEPROM %s. ver=%x%s";
+const char global_eeprom_reset_str[] PROGMEM = "EEPROM reset. ver=%x%s";
+const char global_eeprom_read_str[] PROGMEM = "EEPROM read ver %x%s";
 
 void navputter_eeprom_class::init(void)
 {
@@ -527,28 +415,19 @@ void navputter_eeprom_class::init(void)
 
     if ( hdr_default.version != hdr.version )
     {
+        SERIAL.print("in mem ver=%x, in eeprom=%x, writing config\n\r", hdr_default.version, hdr.version );
         memcpy( (void *)&CONFIG, (void *)&hdr_default, sizeof( hdr_default ) );
         write((void *)&CONFIG, sizeof(CONFIG));
-        SERIAL.print_P( global_eeprom_string,  "RESET.", hdr_default.version, EOLN);
+        SERIAL.print_P( global_eeprom_reset_str,  hdr_default.version, EOLN);
     }
     else
     {
         memcpy( (void *)&CONFIG, (void *)&hdr, sizeof( hdr_default ) );
-        SERIAL.print_P( global_eeprom_string, "read.",  hdr.version, EOLN );
-        if ( CONFIG.default_keymap != BUILT_IN_MAP )
-        {
-            myputter.read_eeprom_keymap();
-        }
+        SERIAL.print_P( global_eeprom_read_str, hdr.version, EOLN );
     }
 }
 
 
-void navputter_class::read_eeprom_keymap(void)
-{
-#define KEY_MAP_SIZE sizeof(m_cur_map) + sizeof(m_seq_map)
-    PROM.read( (void *)m_cur_map, sizeof(m_cur_map), EEPROM_KEYMAP_START + CONFIG.default_keymap * KEY_MAP_SIZE ); 
-    PROM.read( (void *)m_seq_map, sizeof(m_seq_map), EEPROM_KEYMAP_START + CONFIG.default_keymap * KEY_MAP_SIZE + sizeof(m_cur_map)); 
-}
 
 void navputter_class::big_whale(void)
 {
@@ -594,13 +473,13 @@ void navputter_main_menu_class::poll(void)
     char c = SERIAL.read();
     if ( c != 0xff )
     {
-#define _SC_( cmd, str, func ) if ( cmd == c ) { func(); /*goto DONE;*/}
+#define _SC_( cmd, str, func ) if ( cmd == c ) { func(); goto DONE;}
     _SER_CMDS_
 #undef _SC_
         usage();    
     }
-//DONE:
-//    return;
+DONE:
+    return;
 }
 
 const char global_main_menu_str1[] PROGMEM = "Main Menu:%s";
@@ -619,6 +498,7 @@ void navputter_main_menu_class::handle_eeprom(void)
     navputter_eeprom_menu_class *em = new navputter_eeprom_menu_class( );
     myputter.set_menu(em);
 }
+
 
 void navputter_main_menu_class::serial_gpio(void)
 {
@@ -648,25 +528,12 @@ void navputter_main_menu_class::handle_keymaps(void)
 void navputter_eeprom_menu_class::begin(void)
 {
     SERIAL.print_P( global_eeprom_string_2, EOLN, EOLN, EOLN);
-    read_command();
+    set_state(READ_COMMAND);
 }
 
 void navputter_eeprom_menu_class::end(void)
 {
     free( this );
-}
-
-
-int navputter_eeprom_menu_class::no_check( int cmd, int val )
-{
-    return 0;
-}
-
-
-int navputter_eeprom_menu_class::validate_keymap( int cmd, int val )
-{
-    if ( val > CONFIG.key_maps ) return ERROR_KEYMAP_OUT_OF_RANGE;
-    return 0;
 }
 
 void navputter_eeprom_menu_class::poll(void)
@@ -679,13 +546,14 @@ void navputter_eeprom_menu_class::poll(void)
             if ( c == 0xff ) return;
             if ( (c == '\n') || (c=='\r'))
             {
-                set_value();
-
+                m_int_value[m_position]=0;
+                set_state( SET_VALUE );
             }
             else if ( !isdigit( c ) )
             {
                 myputter.error( ERROR_EEPROM_ILLEGAL_VALUE );
-                read_command();
+                usage();
+                set_state( READ_COMMAND );
             }
             else
             {
@@ -693,7 +561,7 @@ void navputter_eeprom_menu_class::poll(void)
                 if ( m_position == sizeof( m_int_value ) )
                 {
                     myputter.error( ERROR_EEPROM_INT_SIZE );
-                    read_command();
+                    set_state( READ_COMMAND );
                 }
                 else SERIAL.write(c);
             }
@@ -705,7 +573,8 @@ void navputter_eeprom_menu_class::poll(void)
             #define _ED_(_cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_) \
             if ( m_command == _cmd_ ) \
             {\
-                read_int();\
+                set_state( READ_INT );\
+                m_position =0;\
                 SERIAL.print("INT:%s", EOLN);\
                 return;\
             }
@@ -728,7 +597,7 @@ void navputter_eeprom_menu_class::poll(void)
             #define _ED_(_cmd_, _field_, _type_, _default_, _min_, _max_, _fmt_, _func_, _help_) \
             if ( m_command == _cmd_ ) \
             {\
-                read_command();\
+                set_state( READ_COMMAND );\
                 int i = atoi((const char *)m_int_value);\
                 if ( (i < _min_) || (i > _max_) )\
                 {\
@@ -746,7 +615,8 @@ void navputter_eeprom_menu_class::poll(void)
             } 
                 _EEPROM_DESC_
             #undef _ED_
-            read_command();
+            usage();
+            set_state( READ_COMMAND );
             break;
         default:
             myputter.error( ERROR_EEPROM_BAD_STATE );
@@ -780,11 +650,6 @@ void navputter_gpio_menu_class::poll(void)
                 m_cmd = c;\
                 m_count = _count_;\
                 m_pos = 0;\
-                if ((c=='a')||(c=='A'))\
-                {\
-                    read_param();\
-                    return;\
-                }\
                 set_state( READ_PORT );\
                 return;\
             }
@@ -802,7 +667,7 @@ void navputter_gpio_menu_class::poll(void)
                 m_port = c;
                 if ( m_count )
                 {
-                    read_param();
+                    set_state( READ_PARAM );
                 }
                 else 
                 {
@@ -820,7 +685,7 @@ void navputter_gpio_menu_class::poll(void)
                 if ( m_pos == sizeof( m_value ) )
                 {
                     myputter.error( ERROR_GPIO_BAD_SIZE );
-                    read_command();
+                    set_state(READ_COMMAND);
                     return;
                 }  
 #define HEX_WORD_READ_SIZE 2
@@ -832,7 +697,7 @@ void navputter_gpio_menu_class::poll(void)
             else
             {
                 myputter.error( ERROR_GPIO_BAD_SIZE );
-                read_command();
+                set_state(READ_COMMAND);
             }
             break;
         case CONVERT_VALUE:
@@ -842,7 +707,8 @@ void navputter_gpio_menu_class::poll(void)
                 set_state(CALL_FUNC);
             else 
             {
-                read_param();
+                m_pos=0;
+                set_state(READ_PARAM);
             }
             break;
         case CALL_FUNC:
@@ -853,7 +719,7 @@ void navputter_gpio_menu_class::poll(void)
             }
             GPIO_MENU
 #undef _GM_
-            read_command();
+            set_state( READ_COMMAND );\
             break; 
         default:
             myputter.error( ERROR_GPIO_BAD_CASE );
@@ -881,16 +747,19 @@ void navputter_gpio_menu_class::end(void)
 
 void navputter_gpio_menu_class::begin(void)
 {
-    read_command();
+    set_state( READ_COMMAND );
+    SERIAL.print("%sGPIO Menu:%s", EOLN, EOLN);
+    DDRB  |= 1; 
+    PORTB |= 1;
 }
 
 void navputter_gpio_menu_class::usage(void)
 {
-    SERIAL.print("%sGPIO Menu:%s", EOLN, EOLN);
 #if LEAN_N_MEAN 
-    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write("\t"); SERIAL.write( _cmd_ ); SERIAL.write( "  <PORT>" ); if (_params_) SERIAL.write("<value>"); SERIAL.write( EOLN );
+    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write( _cmd_ ); SERIAL.write( "<PORT>" ); if (_params_) SERIAL.write("<value>  - "); SERIAL.write( EOLN );
         GPIO_MENU
     #undef _GM_
+    SERIAL.print( "&<port>[value|mask]%s", EOLN );
 #else
     #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.print( "%c)       %s%s", _cmd_, _desc_, EOLN );
         GPIO_MENU
@@ -909,8 +778,8 @@ void navputter_gpio_menu_class::gpio_in_mask(void)
     }
     GPIO_PORTS
 #undef _GP_
-    SERIAL.print("%x.%s",v, EOLN);
     SERIAL.write( OK_STR );
+    SERIAL.print("%x.%s",v, EOLN);
 }    
 
 
@@ -924,8 +793,8 @@ void navputter_gpio_menu_class::gpio_in(void)
     }
     GPIO_PORTS
 #undef _GP_
-    SERIAL.print("%x.%s",v, EOLN);
     SERIAL.write( OK_STR );
+    SERIAL.print("%x.%s",v, EOLN);
 }    
 
 void navputter_gpio_menu_class::gpio_in_bit(void)
@@ -1027,6 +896,9 @@ void navputter_gpio_menu_class::gpio_and(void)
 #undef _GP_
 }
 
+
+
+
 void navputter_gpio_menu_class::gpio_or(void)
 {
 #define _GP_( ascii, port, pin, dir ) \
@@ -1038,6 +910,8 @@ void navputter_gpio_menu_class::gpio_or(void)
     GPIO_PORTS
 #undef _GP_
 }
+
+
 
 void navputter_gpio_menu_class::gpio_out(void)
 {
@@ -1052,44 +926,10 @@ void navputter_gpio_menu_class::gpio_out(void)
 }
 
 
-#define GPIO_A2D_PIN_IX 1
-#define GPIO_A2D_REF_IX 0
-
-void navputter_gpio_menu_class::gpio_setup_a2d(void)
-{
-    //uint8_t ref = m_params[GPIO_A2D_REF_IX];
-    //uint8_t admux = (ref << 6) | (apin & 0x0f);
-    //SERIAL.print("setting admux to %x\n", admux );
-    //ADMUX = admux;
-    //ADCSRA = (1<<ADEN);
-    //ADMUX = 0x40;
-    ADMUX = (1<<REFS0);
-    ADCSRA = (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
-}
-
-
-void navputter_gpio_menu_class::gpio_read_a2d(void)
-{
-    ADMUX = (1<<REFS0);
-    ADCSRA = (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
-    uint16_t apin = m_params[GPIO_A2D_REF_IX];
-    apin &= 0x07;
-    ADMUX = ( ADMUX & 0xf8 ) | apin;
-
-    ADCSRA |= (1<<ADSC);
-    while(ADCSRA & (1 << ADSC));
-    //{
-    //    DOG.kick();
-    //}
-//    uint16_t v = ADC;
-}
-
-
 void navputter_keycode_menu_class::begin(void)
 {
-    read_command();
+    set_state( READ_COMMAND );
     memcpy( &m_key_map, myputter.get_map(),sizeof(m_key_map));
-    memcpy( &m_key_seq_map, myputter.get_seq_map(),sizeof(m_key_seq_map));
 }
 
 void navputter_keycode_menu_class::end(void)
@@ -1106,19 +946,20 @@ void navputter_keycode_menu_class::usage(void)
 #undef _KML_
 }
 
+
 void navputter_keycode_menu_class::set_keycode_display_indicies(void)
 {
 #define _KA_( _ix_, _str_, _desc_ ) \
-    if ( _ix_ == m_key_seq_map[ m_seq ].action ) m_ks[ m_edit_key ].action_ix = _ix_;
+    if ( _ix_ == m_key_map[ m_row ][ m_col ].action ) m_ks[ m_edit_key ].action_ix = _ix_;
     KEY_ACTION_LIST
 #undef _KA_
 
 #define _MODL_( _ix_, _str_, _hid_ ) \
-    if (((( m_key_seq_map[ m_seq ].key_press[0]) & 0xff00)>>8) & _hid_ )\
+    if (((( m_key_map[m_row][m_col].key_press[0]) & 0xff00)>>8) & _hid_ )\
     {\
         m_ks[0].mod_ix = _ix_;\
     }\
-    if ((( m_key_seq_map[ m_seq ].key_press[1] & 0xff00)>>8) & _hid_ )\
+    if ((( m_key_map[m_row][m_col].key_press[1] & 0xff00)>>8) & _hid_ )\
     {\
         m_ks[0].mod_ix = _ix_;\
     }
@@ -1133,31 +974,14 @@ static const char global_save_keymap_to_eeprom_str[] PROGMEM = "Keymap saved to 
 void navputter_keycode_menu_class::save_keymap_to_eeprom( uint8_t ix )
 {
     SERIAL.print_P( global_save_keymap_to_eeprom_str, ix, 0, EOLN);
-// FIXME
-#if 0
     PROM.write( (void *)&m_key_map, sizeof( m_key_map ), EEPROM_KEYMAP_START + ix * KEY_MAP_SIZE ); 
     if ( ix == CONFIG.key_maps )
     {
         CONFIG.key_maps++;
     }
     PROM.write( &CONFIG, sizeof( CONFIG ) );
-#endif
 }
-
-
-static const char keycode_usage_string[] PROGMEM = "Change key seq with the following keys:\n\r";
-static const char keycode_usage_string2[] PROGMEM = "%c) %s\n\r";
-void navputter_keycode_menu_class::keycode_edit_usage(void)
-{
-    SERIAL.print_P(keycode_usage_string);
-#define _KEL_( _k_, _s_, _f_, _e_ ) SERIAL.print_P( keycode_usage_string2, _k_, _s_ );
-    KEYCODE_EDIT_LIST
-#undef _KEL_
-    SERIAL.print(EOLN);
-}
-
-
-
+ 
 void navputter_keycode_menu_class::poll(void)
 {
     uint8_t c;
@@ -1182,7 +1006,8 @@ void navputter_keycode_menu_class::poll(void)
             if ( c == 0xff ) return;
             if ( c == 'q' )
             {
-                read_command();
+                set_state( READ_COMMAND );
+                usage();
                 break;
             }
             else if ( c == 'w' )
@@ -1192,30 +1017,34 @@ void navputter_keycode_menu_class::poll(void)
             }
             else 
             {
-#define KP_KEY(_sc_, _ev_, _act_, _x_, _y_ )\
-                if ( _sc_ == c )\
-                {\
-                    SERIAL.print("editing %d:\n\r\n\r", _ev_ );\
-                    m_seq = _ev_;\
-                    keycode_edit_usage();\
-                    format_key_action((uint8_t)_ev_);\
-                    set_keycode_display_indicies(); \
-                    set_state( EDIT_KEY );\
-                    break;\
-                }    
-                KP_KEY_LIST
-#undef KP_KEY
+                uint8_t row,col;
+                for (row=0;row<CONFIG.rows;row++)
+                {
+                    for (col=0;col<CONFIG.cols;col++)
+                    {
+                        if ( m_key_map[row][col].short_cut == c )
+                        {
+                            m_row = row;
+                            m_col = col;
+                            m_edit_key = 0;
+                            m_int_ix=0;
+                            set_keycode_display_indicies(); 
+                            key_edit_usage();
+                            set_state( EDIT_KEY );
+                            break;
+                        }
+                    }
+                }
             }
-            break;
+        break;
         case EDIT_KEY:
             c = SERIAL.read();
             if ( c == 0xff ) return;
-#define _KEL_( _k_, _s_, _f_, _e_ ) if ( c == _k_ ) _f_();
+#define _KEL_( _k_, _s_, _f_, _e_ ) if ( c == _k_ ) _f_(); 
             KEYCODE_EDIT_LIST
 #undef _KEL_
             SERIAL.write(EOLN);
-            keycode_edit_usage();
-            if ( c != 'q' ) format_key_action(m_seq);
+            if ( c != 'q' ) format_key_action(m_row,m_col);
             break;
         case READ_LOAD_INT:
             c = SERIAL.read();
@@ -1232,7 +1061,8 @@ void navputter_keycode_menu_class::poll(void)
                         set_state( LOAD_KEYMAP );
                 }
                 myputter.error( ERROR_KEYMAP_NOT_A_NUMBER );
-                read_command();
+                set_state( READ_COMMAND );
+                usage();
             }
             else
             {
@@ -1247,10 +1077,12 @@ void navputter_keycode_menu_class::poll(void)
             if (( c > CONFIG.key_maps )||(c<0))
             {
                 myputter.error( ERROR_KEYMAP_OUT_OF_RANGE );
-            
+                set_state( READ_COMMAND );
+                return;
             }
             save_keymap_to_eeprom( c ); 
-            read_command();
+            usage();
+            set_state( READ_COMMAND );
             break;
         case READ_SAVE_INT:
             c = SERIAL.read();
@@ -1273,40 +1105,13 @@ void navputter_keycode_menu_class::poll(void)
                     }       
                 }
                 myputter.error( ERROR_KEYMAP_NOT_A_NUMBER );
-                read_command();
+                set_state( READ_COMMAND );
             }
             else
             {
                 m_int_value[m_int_ix++] = c;
             }
             break;
-        case EDIT_PINMAP:
-            c = SERIAL.read();
-            if ( c == 0xff ) return;
-            #define _KPM_( _key_, _str_, _func_ ) if ( c == _key_ ) _func_();
-            KEY_PIN_MENU
-            #undef _KPM_
-            if ( c != 'q' ) edit_pin_map_usage();
-            break;
-        case EDIT_PIN_ENTRY:
-            c = SERIAL.read();
-            if ( c == 0xff ) return;
-            if ( isdigit(c) )
-            {
-                m_int_value[m_int_ix++]=c;
-            }
-            if ( m_int_ix >= 1 )
-            {
-                uint8_t i = atoi((const char *)m_int_value);
-                m_key_map[m_edit_pin_row][m_edit_pin_col] = i;
-            }
-            else 
-            {
-                m_key_map[m_edit_pin_row][m_edit_pin_col] = 0xff;
-            } 
-            edit_pin_map();
-            break;
-
         default: 
             myputter.error( ERROR_KEYMAP_EDITOR_INVALID_STATE );
             assert(0);
@@ -1315,55 +1120,122 @@ void navputter_keycode_menu_class::poll(void)
         
 }
 
-void navputter_keycode_menu_class::edit_pin_field_usage(void)
+void navputter_keycode_menu_class::fill_keymap(void)
 {
-    SERIAL.print("edit\n\r");
+    memcpy( &m_key_map, base_map, sizeof(base_map));
 }
-
 
 
 void navputter_keycode_menu_class::prev_action(void)
 {
-    m_key_seq_map[ m_seq ].action = ( m_key_seq_map[ m_seq ].action == 0 ) ? KA_LAST_ACTION-1 : m_key_seq_map[ m_seq].action - 1;
 }
 
 void navputter_keycode_menu_class::next_action(void)
 {
-    m_key_seq_map[ m_seq ].action++;
-    if ( m_key_seq_map[ m_seq ].action == KA_LAST_ACTION ) m_key_seq_map[ m_seq ].action = 0;
+    uint16_t first=0xffff;
+    uint16_t act=0;
+    m_ks[ m_edit_key ].action_ix++;
+#define _KA_( _enum_, _short_, _long_ ) \
+    if ( first == 0xffff ) first=_enum_;\
+    if ( m_ks[ m_edit_key ].action_ix == _enum_ )\
+    {\
+        act = _enum_;\
+        goto DONE;\
+    }
+KEY_ACTION_LIST
+#undef _KA_
+    m_ks[ m_edit_key ].action_ix=0;
+    act = first;
+DONE:
+    m_key_map[ m_row ][ m_col ].action = act;
 }
 
 void navputter_keycode_menu_class::prev_key(void)
 {
-    uint16_t kv = m_key_seq_map[ m_seq ].key_press[ m_edit_key ];
-    kv = ( (kv & 0x00ff) == 0 ) ? (key_code_enum_last -1) : kv-1;
-    m_key_seq_map[ m_seq ].key_press[ m_edit_key ] &= 0xff00;
-    m_key_seq_map[ m_seq ].key_press[ m_edit_key ] |= kv;
+    uint16_t first=0xffff;
+    uint16_t scan=0;
+    m_ks[ m_edit_key ].key_ix++;
+#define _KEYL_( _lc_, _uc_, _sc_ ) \
+    if ( first == 0xffff ) first=_sc_;\
+    if ( m_ks[ m_edit_key ].key_ix == key_code_enum_##_sc_ )\
+    {\
+        scan = _sc_;\
+        goto DONE;\
+    }
+KEYCODE_KEY_LIST
+#undef _KEYL_
+    m_ks[ m_edit_key ].key_ix=0;
+    scan = first;
+DONE:
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] &= 0xff00; 
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] |= (scan);
 }
 
 
 void navputter_keycode_menu_class::next_key(void)
 {
-    uint16_t kv = m_key_seq_map[ m_seq ].key_press[ m_edit_key ];
-    kv = ( (kv & 0x00ff) == (key_code_enum_last-1) ) ? 0 : kv+1;
-    m_key_seq_map[ m_seq ].key_press[ m_edit_key ] &= 0xff00;
-    m_key_seq_map[ m_seq ].key_press[ m_edit_key ] |= kv;
+    uint16_t first=0xffff;
+    uint16_t scan=0;
+    m_ks[ m_edit_key ].key_ix++;
+#define _KEYL_( _lc_, _uc_, _sc_ ) \
+    if ( first == 0xffff ) first=_sc_;\
+    if ( m_ks[ m_edit_key ].key_ix == key_code_enum_##_sc_ )\
+    {\
+        scan = _sc_;\
+        goto DONE;\
+    }
+KEYCODE_KEY_LIST
+#undef _KEYL_
+    m_ks[ m_edit_key ].key_ix=0;
+    scan = first;
+DONE:
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] &= 0xff00; 
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] |= (scan);
 }
 
 void navputter_keycode_menu_class::next_modifier(void)
 {
-    uint16_t km = m_key_seq_map[ m_seq ].key_press[ m_edit_key ] & 0xff00;
-    km = (km == 0) ? 0x0100 : km << 1;
-    m_key_seq_map[m_seq].key_press[m_edit_key] &= 0x00ff;
-    m_key_seq_map[m_seq].key_press[m_edit_key] |= km;
+    uint16_t first=0xffff;
+    uint16_t scan=0;
+    m_ks[ m_edit_key ].mod_ix++;
+#define _MODL_( _ix_, _str_, _sc_ ) \
+    if ( first == 0xffff ) first=_sc_;\
+    if ( m_ks[ m_edit_key ].mod_ix == _ix_ )\
+    {\
+        scan = _sc_;\
+        goto DONE;\
+    }
+KEYCODE_MODIFIER_LIST
+#undef _MODL_
+    m_ks[ m_edit_key ].mod_ix=0;
+    scan = first;
+DONE:
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] &= 0x00ff; 
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] |= (scan << 8);
 }
+
 
 void navputter_keycode_menu_class::prev_modifier(void)
 {
-    uint16_t km = m_key_seq_map[ m_seq ].key_press[ m_edit_key ] & 0xff00;
-    km = (km == 0) ? 0x8000 : (km >> 1) & 0xff00;
-    m_key_seq_map[m_seq].key_press[m_edit_key] &= 0x00ff;
-    m_key_seq_map[m_seq].key_press[m_edit_key] |= km;
+    uint16_t prev=0xffff;
+    uint16_t scan=0;
+    uint8_t  last=0;
+    m_ks[ m_edit_key ].mod_ix--;
+#define _MODL_( _ix_, _str_, _sc_ ) \
+    prev =_sc_;\
+    last = _ix_;\
+    if ( m_ks[ m_edit_key ].mod_ix == _ix_ )\
+    {\
+        scan = _sc_;\
+        goto DONE;\
+    }
+KEYCODE_MODIFIER_LIST
+#undef _MODL_
+    m_ks[ m_edit_key ].mod_ix=prev;
+    scan = last;
+DONE:
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] &= 0x00ff; 
+    m_key_map[ m_row ][ m_col ].key_press[m_edit_key] |= (scan << 8);
 }
 
 const char switch_keypress_message[] PROGMEM = "Now editing keypress %d%s";
@@ -1374,16 +1246,16 @@ void navputter_keycode_menu_class::edit_next(void)
     SERIAL.print_P( switch_keypress_message, m_edit_key, EOLN );
 }
 
-void navputter_keycode_menu_class::format_scancode( uint16_t sc)
+uint16_t navputter_keycode_menu_class::format_scancode( uint16_t sc)
 {
+    uint16_t sz=0;
     uint8_t mod_code = (sc & 0xff00) >> 8;
     uint8_t key_code = sc & 0x00ff;
-
     do {
 #define _KEYL_( _lc_, _uc_, _kc_ )\
         if ( _kc_ == key_code )\
         {\
-            SERIAL.print("'%s'", _lc_ );\
+            sz += SERIAL.print("'%s'", _lc_ );\
             break;\
         }
         KEYCODE_KEY_LIST
@@ -1394,60 +1266,76 @@ void navputter_keycode_menu_class::format_scancode( uint16_t sc)
 #define _MODL_( _enum_, _str_, _sc_ )\
         if ( _sc_ & mod_code ) \
         {\
-            SERIAL.write( "+'" _str_ "'" );\
+            sz += SERIAL.write( "+'" _str_ "'" );\
             break;\
         }
         KEYCODE_MODIFIER_LIST
 #undef _MODL_
     } while(0);
+
+    return sz;
 }
 
 
-
-#define _KA_( _ev_, _str_, _desc_ )\
-    static const char keycode_menu_action##_ev_[] PROGMEM = _str_;\
-    static const char keycode_menu_desc##_ev_[] PROGMEM = _desc_;
-KEY_ACTION_LIST;
-#undef _KA_
-
-#define _SAL_( _ev_, _desc_ ) \
-    static const char keycode_menu_special##_ev_[] PROGMEM = _desc_;
-_SPECIAL_ACTION_LIST_
-#undef _SAL_
-
-
-void navputter_keycode_menu_class::format_key_action( uint8_t seq )
+void navputter_keycode_menu_class::format_key_action( uint8_t row, uint8_t col)
 {
     uint16_t action=0;
-    action = m_key_seq_map[ seq ].action;
-
-    #define _KA_(_ev_, _str_, _desc_) if ( _ev_ == action ) SERIAL.print("%S - %S%s", keycode_menu_action##_ev_, keycode_menu_desc##_ev_, EOLN );
+    uint8_t  sz=0;
+    do
+    {
+#define _KA_(e, _short_, _desc_ ) \
+        if ( m_key_map[row][col].action == e ) \
+        {\
+            SERIAL.print( "%c)%s", m_key_map[row][col].short_cut, _short_ ); \
+            sz+=strlen(_short_);\
+            action = e;\
+            break;\
+        }
     KEY_ACTION_LIST
-    #undef _KA_
+#undef _KA_
+    }while(0);
+
     switch( action )
     {
         case KA_KEY_SCANCODE_ACTION:
-            if ( m_key_seq_map[seq].key_press[0] ) { format_scancode( m_key_seq_map[seq].key_press[0] ); }
-            if ( m_key_seq_map[seq].key_press[1] ) { SERIAL.write(","); format_scancode( m_key_seq_map[seq].key_press[1]); }
+            if ( m_key_map[row][col].key_press[0] ) { sz += format_scancode( m_key_map[row][col].key_press[0] ); }
+            if ( m_key_map[row][col].key_press[1] ) { sz += SERIAL.write(","); sz += format_scancode( m_key_map[row][col].key_press[1]); }
             break;
         case KA_SPECIAL_ACTION:
-            #define _SAL_( _ev_, _desc ) if ( _ev_ == m_key_seq_map[seq].key_press[0] ) SERIAL.print( "%S%s", keycode_menu_special##_ev_, EOLN ); 
-                _SPECIAL_ACTION_LIST_
-            #undef _SAL_ 
+            switch( m_key_map[row][col].key_press[0] )
+            {
+                case SA_TOGGLE_KEY_ARROWS:
+                    sz += SERIAL.write("ArrowMode");
+                    break;
+                default:
+                    myputter.error( ERROR_KEYMAP_INVALID_ACTION );
+                    break;
+            }
             break;
+    }
+#define FMT_PAD 15
+    while( sz< FMT_PAD )
+    {
+        sz++;
+        SERIAL.write(" ");
     }
 }
 
 
 void navputter_keycode_menu_class::show_keymap(void)
 {
+    uint8_t r;
+    uint8_t c;
+
     SERIAL.write(EOLN);
-#define KP_KEY( _sc_, _ev_, _act_, _x_, _y_ ) \
-    SERIAL.print( "%c) ", _sc_ );\
-    format_key_action(_ev_);\
-    SERIAL.write(EOLN);
-    KP_KEY_LIST
-#undef KP_KEY 
+    for (r=0; r< CONFIG.rows; r++ )
+    {
+        for ( c=0; c< CONFIG.cols; c++ )
+        {
+            format_key_action( r,c);
+        }
+        SERIAL.write(EOLN);
+    }
 }
 
 #define EEPPROM_KEYMAP_START 32
@@ -1460,85 +1348,52 @@ void navputter_keycode_menu_class::load_keymap(void)
     if ( CONFIG.key_maps == 0 )
     {
         SERIAL.print_P( global_keycode_error_no_keymaps_str, EOLN, EOLN, EOLN );
-        read_command();
-    } SERIAL.print_P( global_keycode_load_str, CONFIG.key_maps, EOLN);  
+        usage();
+        set_state( READ_COMMAND );
+        return;
+    }
+    SERIAL.print_P( global_keycode_load_str, CONFIG.key_maps, EOLN);  
     set_state( READ_LOAD_INT );
 }
 
 
-const char global_progmem_keycode_editmenu_format_string_2[] PROGMEM = "Refer to keys with numbers and letters below:\n\r\n\r";
-const char global_progmem_keycode_editmenu_format_string[] PROGMEM = "%s%c  ";
-const char keycode_menu_str_1[] PROGMEM = "Press key number or letter to edit, 'w' to write, 'q' to quit:";
-const char eoln_str[] PROGMEM = "\n\r\n\r";
+const char global_progmem_keycode_editmenu_format_string[] PROGMEM = "%c) - %S%s"; 
+const char keycode_menu_str_1[] PROGMEM = "%sPress menu KEY) to edit, 'w' to write, 'q' to quit:";
+const char keycode_menu_str_3[] PROGMEM = "KEY:";
 void navputter_keycode_menu_class::key_edit_usage(void)
 {
-
-    SERIAL.print_P( global_progmem_keycode_editmenu_format_string_2);
-#define KP_KEY( _sc_, _seq_, _act_, _x_, _y_ )\
-    SERIAL.print_P( global_progmem_keycode_editmenu_format_string, (_x_==0)?EOLN:"", _sc_);
-    KP_KEY_LIST
-#undef KP_KEY
-    SERIAL.print_P( eoln_str );
-    SERIAL.print_P( keycode_menu_str_1);
+//    SERIAL.write(EOLN);
+//    SERIAL.write(EOLN);
+//    format_key_action( m_row, m_col );
+    SERIAL.write(EOLN);
+#define _KEL_( _c_, _str_, _func_, _enum_ ) SERIAL.print_P( global_progmem_keycode_editmenu_format_string, _c_, global_progmem_keycode_menu_##_enum_, EOLN );
+                KEYCODE_EDIT_LIST
+#undef _KEL_ 
+    SERIAL.write(EOLN);
 }
 
 void navputter_keycode_menu_class::edit_keymap(void)
 {
     show_keymap();
-    key_edit_usage();
+    //key_edit_usage();
+    SERIAL.print_P(keycode_menu_str_3);
     set_state( EDIT_COMMAND );
 }
 
 
-const char global_save_keymap_string_1[] PROGMEM = "%sPress an integer up to %d to overwrite that slot, or%s";
+const char global_save_keymap_string_1[] PROGMEM = "%sPress an integer up to (non inclusive) %d to overwrite that slot, or%s";
 const char global_save_keymap_string_2[] PROGMEM = "Press %d to add a new keymap at index %d:";
-const char global_dump_keymap_string_0[] PROGMEM = "\n\rCurrent key layout:";
-const char global_dump_keymap_string_1[] PROGMEM = "Keymap %d:%s%s";
-const char global_dump_keymap_string_3[] PROGMEM = "\n\rKey actions by number:";
-const char global_dump_keymap_string_4[] PROGMEM = "Col:    00  01  02  03  04  05%s";
-const char global_dump_keymap_string_5[] PROGMEM = "Row %2.2d: ";
-
-void navputter_keycode_menu_class::edit_pin_map(void)
-{
-    #define _KPM_( _key_, _str_, _func_) SERIAL.print("%c) %s%s", _key_, _str_, EOLN );
-    KEY_PIN_MENU
-    #undef _KPM_
-    m_edit_pin_row = 0;
-    m_edit_pin_col = 0;
-    m_int_ix = 0;
-    edit_pin_map_usage();
-    set_state( EDIT_PINMAP );
-}
-
-void navputter_keycode_menu_class::edit_pin_map_usage()
-{
-    uint8_t r, c;
-    SERIAL.print_P(global_dump_keymap_string_4, EOLN);
-    for (r=0; r< MAX_KEY_ROWS; r++)
-    {
-        SERIAL.print_P(global_dump_keymap_string_5,r);
-        for (c=0; c<MAX_KEY_COLS; c++)
-        {
-            if ( (m_edit_pin_row == r) && (m_edit_pin_col == c))
-            {
-                SERIAL.print("XX  ");
-            }
-            else
-            {
-                if ( m_key_map[r][c] != 0xff)
-                    SERIAL.print("%2.2d  ",m_key_map[r][c]);
-                else 
-                    SERIAL.print("    " );
-            }
-        }
-        SERIAL.print(EOLN);
-    }
-    SERIAL.print(EOLN);
-} 
+const char global_dump_keymap_string_1[] PROGMEM = "Dumping keymap %d:%s%s";
 
 void navputter_keycode_menu_class::dump_keymap(void)
 {
-    show_keymap();
+    uint8_t i;
+    for ( i=0; i< CONFIG.key_maps; i++ )
+    {
+        SERIAL.print_P( global_dump_keymap_string_1,i,EOLN,EOLN);
+        PROM.read( m_key_map, sizeof(m_key_map), EEPROM_KEYMAP_START + i* KEY_MAP_SIZE );
+        show_keymap();
+    }
 }
 
 
@@ -1559,101 +1414,9 @@ void navputter_keycode_menu_class::quit(void)
 
 void navputter_keycode_menu_class::quit_edit(void)
 {
-    read_command();
+    set_state( READ_COMMAND );
+    usage();
 }
 
 
-void navputter_worker_class::start( void )
-{
-}
-
-void navputter_worker_class::done( void )
-{
-}
-
-void navputter_worker_class::run_job( void )
-{
-    if ( global_ticks >= (m_start + m_duration) )
-    {
-        set_state( WORKER_DONE );
-    }
-}
-
-
-void navputter_worker_pulse_class::start( void )
-{
-    set_state(WORKER_PULSE_ON);
-}
-
-
-void navputter_worker_pulse_class::pulse_on(void)
-{
-}
-
-void navputter_worker_pulse_class::pulse_off(void)
-{
-}
-
-
-#define WORK_CYCLES_INFINITE 0xff
-void navputter_worker_pulse_class::run_job( void )
-{
-    switch( get_state() )
-    {
-        case WORKER_PULSE_ON:
-            pulse_on();
-            set_state( WORKER_WAITING );
-            m_wait_until = global_ticks + m_hold_time_1;
-            m_next_state = (m_cycles)? WORKER_PULSE_OFF : WORKER_DONE;
-            break;
-        case WORKER_PULSE_OFF:
-            pulse_off();
-            set_state( WORKER_WAITING );
-            m_wait_until = global_ticks + m_hold_time_2;
-            m_next_state = (m_cycles)? WORKER_PULSE_ON : WORKER_DONE;
-            break; 
-
-        case WORKER_WAITING:
-            if ( global_ticks >= m_wait_until )
-            {
-                set_state( m_next_state );
-                m_cycles = ( m_cycles == WORK_CYCLES_INFINITE )? m_cycles : m_cycles-1;
-            }
-            break;
-        default:
-            myputter.error( ERROR_WORKER_BAD_STATE ); 
-            break;
-    }
-}
-
-void navputter_work_pool_class::start_job( navputter_worker_class *job )
-{
-    if ( job->is_running() )
-    {
-        myputter.error( ERROR_JOB_RUNNING );
-        return;
-    }
-    job->set_state( WORKER_STARTING );
-    job->set_start( global_ticks );
-    add_job_list(job);
-    job->start();
-}
-
-void navputter_timer_class::poll(void)
-{
-    if ( global_ticks >= m_call_next )
-    {
-        m_call_next = global_ticks + m_interval;
-        tick();
-    }
-    if ( m_last_work != global_ticks )
-    {
-        m_last_work = global_ticks;
-        WORKERS.tick();
-    }
-}
-
-
-
-
-
+/** Configures the board hardware and chip peripherals for the demo's functionality. */

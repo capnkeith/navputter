@@ -43,24 +43,33 @@ enum error_codes
     ERROR_KEYMAP_NOT_A_NUMBER,
     ERROR_KEYMAP_INVALID_ACTION,
     ERROR_JOB_RUNNING,
+    ERROR_WORKER_BAD_STATE,
 };
 
-#define MAX_KEY_ARROW_STATE 2   /
+#define MAX_KEY_ARROW_STATE 2   
+
+#define _SPECIAL_ACTION_LIST_\
+    _SAL_( SA_POWER_CYCLE,        "Power off" )\
+    _SAL_( SA_TOGGLE_KEY_ARROWS,  "Cycle key arrows" )\
+    _SAL_( SA_SHOW_KEY,           "Show Key" )\
+/* end of list */
+
+#define _SAL_( _ev_, _desc_ ) _ev_,
 enum special_actions
 {
-    SA_TOGGLE_KEY_ARROWS = 0,
-    SA_POWER_CYCLE,
+    _SPECIAL_ACTION_LIST_
 };
+#undef _SAL_
 
 
 #define MAX_MOUSE_STEP 64
 
-#undef _KM_
 
 #define SERIAL_STARTUP_DELAY_MS 4000
 
-#define MAX_KEY_ROWS        4
-#define MAX_KEY_COLS        4
+#define MAX_KEY_ROWS        6 
+#define MAX_KEY_COLS        6 
+#define MAX_KEY_SEQUENCES   19
 
 
 
@@ -69,7 +78,7 @@ enum special_actions
 
 /* keep the header to 16 bytes */
 #define _EEPROM_DESC_\
-    _ED_( 'v', version,          uint16_t,    0x0102,        0, 0xff,           "%-8x",    no_check,              "EEPROM version. Change to reset device to factory default." )\
+    _ED_( 'v', version,          uint16_t,    0x0104,        0, 0xff,           "%-8x",    no_check,              "EEPROM version. Change to reset device to factory default." )\
     _ED_( 'r', rows,             uint8_t,     MAX_KEY_ROWS,  1, MAX_KEY_ROWS,   "%-8d",    no_check,              "Number of rows of keys on your keypad." )\
     _ED_( 'c', cols,             uint8_t,     MAX_KEY_COLS,  1, MAX_KEY_COLS,   "%-8d",    no_check,              "Number of columns of keys on your keypad." )\
     _ED_( 'f', flip_rows,        uint8_t,     1,             0, 1,              "%-8d",    no_check,              "Flip keypad rows." )\
@@ -82,6 +91,117 @@ enum special_actions
     _ED_( 'K', key_arrows,       uint8_t,     0,             0, 1,              "%-8d",    no_check,              "Keyboard arrows by default." )\
     _ED_( 'd', default_keymap,   uint8_t,     BUILT_IN_MAP,  0, 0xff,           "%-8x",    validate_keymap,       "Default startup keymap from eeprom." )\
 // endo fo _EEPROM_DESC_ list
+
+
+
+/* 
+ * for a 19 key '10 key style' keypad, number the keys like so:
+   
+              1  2  3  4
+              5  6  7  8
+              9  a  b  c
+              d  e  f  g
+              h  i  j  g
+   
+   key g is a double wide (enter key).           
+ */
+
+
+
+#define HOLD_TIME(_mint_, _maxt_ ) ((_mint_)&0x0f) | ((_maxt_)<<4)
+#define SCANCODE( mod, key ) ((((uint16_t)mod)<<8)|key)
+
+#define C_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( 0,  HID_KEYBOARD_SC_C)}
+
+#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), SA_POWER_CYCLE}      /* alt + gives slow zoom in */
+#define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, '3', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)} /* alt - gives slow zoom out */
+#define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, 'a', SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                              /* f2 is follow */
+#define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, 'b', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                    /* ctrl r is route */
+#define COLOR_KEY          {KA_KEY_SCANCODE_ACTION, 'c', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTALT,  HID_KEYBOARD_SC_C)}                    /* alt C is color change */
+#define MOB_KEY            {KA_KEY_SCANCODE_ACTION, 'd', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_SPACE)}                /* mob is ctrl space */ 
+#define TOGGLE_KEY_ARROWS  {KA_SPECIAL_ACTION,      '7', SA_TOGGLE_KEY_ARROWS}                                                           /* toggler mouse, slow key, fast key*/
+
+/* these mouse moves have 2 additional arguments, a slow key scancode, and a fast key scancodes used in the key arrow modes instead of mouse moves.
+   so, MOUSE_UP will be a mouse action in key_arrow mode 0, an ALT up arrow in key_arrow mode 1 and an up arrow in key mode 2.                      */
+#define MOUSE_UP           {KA_MOUSE_UP,    '2', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_UP_ARROW ),    SCANCODE( 0,HID_KEYBOARD_SC_UP_ARROW)}  
+#define MOUSE_LEFT         {KA_MOUSE_LEFT,  '4', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_LEFT_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
+#define MOUSE_RIGHT        {KA_MOUSE_RIGHT, '6', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
+#define MOUSE_DOWN         {KA_MOUSE_DOWN,  '8', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_DOWN_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_DOWN_ARROW)}  
+
+#define MOUSE_LT_CLICK {KA_MOUSE_LT_CLICK,0}
+#define MOUSE_RT_CLICK {KA_MOUSE_RT_CLICK,0}
+#define SHOW_KEY       {KA_SPECIAL_ACTION,0, SA_SHOW_KEY}
+
+#if 0 /* 4x4 map */
+key_map_t   base_map[4][4] =
+//[MAX_KEY_ROWS][MAX_KEY_COLS] =
+{
+        { ZOOM_IN_KEY,            MOUSE_UP,             ZOOM_OUT_KEY,               FOLLOW_KEY },
+        { MOUSE_LEFT,             {KA_MOUSE_STEP, '5'}, MOUSE_RIGHT,                ROUTE_KEY  },
+        { TOGGLE_KEY_ARROWS,      MOUSE_DOWN,           {KA_REPORT_KEY,'9'},        COLOR_KEY  },
+        {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'},  {KA_MOUSE_RT_CLICK,'#'},    MOB_KEY    }
+};
+//[MAX_KEY_ROWS][MAX_KEY_COLS] =
+key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
+{
+        { KP_KEY1, KP_KEY_2, KP_KEY_3, KP_KEY_4 },
+        { KP_KEY5, KP_KEY_6, KP_KEY_7, KP_KEY_8 },
+        { KP_KEY9, KP_KEY_10, KP_KEY_3, KP_KEY_4 },
+};
+#endif
+
+#define SEQ_NA 0xff 
+
+/* this is the list of all keys, their enumerated sequence name, and x,y location on the keypad grid. 
+   The format is as follows:
+         KP_KEY( shortcut key,  sequence enum,  action,  x locaton, y location )
+ */
+#define KP_KEY_LIST\
+    KP_KEY('1',   KEY_SEQ_1,    ZOOM_IN_KEY,        0, 0 )\
+    KP_KEY('2',   KEY_SEQ_2,    FOLLOW_KEY,         1, 0 )\
+    KP_KEY('3',   KEY_SEQ_3,    ROUTE_KEY,          2, 0 )\
+    KP_KEY('4',   KEY_SEQ_4,    COLOR_KEY,          3, 0 )\
+    KP_KEY('5',   KEY_SEQ_5,    ZOOM_OUT_KEY,       0, 1 )\
+    KP_KEY('6',   KEY_SEQ_6,    MOUSE_UP,           1, 1 )\
+    KP_KEY('7',   KEY_SEQ_7,    SHOW_KEY,           2, 1 )\
+    KP_KEY('8',   KEY_SEQ_8,    C_KEY,              3, 1 )\
+    KP_KEY('9',   KEY_SEQ_9,    MOUSE_LEFT,         0, 2 )\
+    KP_KEY('a',   KEY_SEQ_10,   TOGGLE_KEY_ARROWS,  1, 2 )\
+    KP_KEY('b',   KEY_SEQ_11,   MOUSE_RIGHT,        2, 2 )\
+    KP_KEY('c',   KEY_SEQ_12,   SHOW_KEY,           3, 2 )\
+    KP_KEY('d',   KEY_SEQ_13,   SHOW_KEY,           0, 3 )\
+    KP_KEY('e',   KEY_SEQ_14,   MOUSE_DOWN,         1, 3 )\
+    KP_KEY('f',   KEY_SEQ_15,   SHOW_KEY,           2, 3 )\
+    KP_KEY('g',   KEY_SEQ_16,   MOB_KEY,            3, 3 )\
+    KP_KEY('h',   KEY_SEQ_17,   MOUSE_LT_CLICK,     0, 4 )\
+    KP_KEY('i',   KEY_SEQ_18,   SHOW_KEY,           1, 4 )\
+    KP_KEY('j',   KEY_SEQ_19,   MOUSE_RT_CLICK,     2, 4 )\
+/* end of KP_KEY_LIST */
+
+#define KP_KEY(_sc_, _ev_, _act_, _x_, _y_) _ev_,
+enum key_seq_enum
+{
+    KP_KEY_LIST
+};
+#undef KP_KEY
+
+
+
+/* this is the encoding for an 'obnomon' 19 key membrane found in Kadaon 19 key keypads. 
+   Format is:
+        _KM_( col0, col1, col2, col3, col4, col5 ) 
+   Where colx is one of the key sequence enumerators or SEQ_NA for no connection.
+*/
+
+#define KEYPAD_PIN_MAP\
+    _KM_( KEY_SEQ_8,    SEQ_NA,     SEQ_NA,     SEQ_NA,     KEY_SEQ_4,  SEQ_NA  )        /* row 0 */    \
+    _KM_( SEQ_NA,       SEQ_NA,     KEY_SEQ_1,  KEY_SEQ_2,  KEY_SEQ_3,  SEQ_NA  )        /* row 1 */    \
+    _KM_( SEQ_NA,       SEQ_NA,     SEQ_NA,     KEY_SEQ_17, KEY_SEQ_19, SEQ_NA  )        /* row 2 */   \
+    _KM_( SEQ_NA,       SEQ_NA,     KEY_SEQ_13, KEY_SEQ_14, KEY_SEQ_15, KEY_SEQ_16 )    /* row 3 */    \
+    _KM_( KEY_SEQ_18,   KEY_SEQ_12, KEY_SEQ_9,  KEY_SEQ_10, KEY_SEQ_11, SEQ_NA )        /* row 4 */    \
+    _KM_( SEQ_NA,       SEQ_NA,     KEY_SEQ_5,  KEY_SEQ_6,  KEY_SEQ_7,  KEY_SEQ_8 )      /* row 5 */   \
+/* end of KEYPAD_PIN_MAP */
+
 
 
 #define EEPROM_HDR_RESERVED 64
@@ -140,9 +260,9 @@ void cmd_mapm( FILE *fp, char *str );
 #define KA_TO_NP_MOUSE_DIR( ka ) ((ka)-KA_MOUSE_UP)
 
 #define KEY_ACTION_LIST\
-    _KA_( KA_NO_ACTION,             "N/A ",       "Do nothing." )\
-    _KA_( KA_KEY_SCANCODE_ACTION,   "",           "Send key seq.")\
-    _KA_( KA_SPECIAL_ACTION,        "",           "Special action.")\
+    _KA_( KA_NO_ACTION,             "Nothing",    "Do nothing." )\
+    _KA_( KA_KEY_SCANCODE_ACTION,   "Keypress:",  "Send key seq.")\
+    _KA_( KA_SPECIAL_ACTION,        "Special",    "Special action.")\
     _KA_( KA_MOUSE_UP,              "Mouse-UP",   "Mouse up." )\
     _KA_( KA_MOUSE_DOWN,            "Mouse-DN",   "Mouse down." )\
     _KA_( KA_MOUSE_LEFT,            "Mouse-LT",   "Mouse left." )\
@@ -157,11 +277,16 @@ void cmd_mapm( FILE *fp, char *str );
     _KA_( KA_REPORT_KEY,            "Show Key",   "Report keypress only.")\
 /* end of KEY_ACTION_LIST */
 
+
+
+
+
 enum key_map_actions
 {
 #define _KA_( _e_, s, d ) _e_,
     KEY_ACTION_LIST
 #undef _KA_
+    KA_LAST_ACTION
 };
 
 enum mouse_directions
@@ -189,7 +314,7 @@ enum keypad_states      /* keypad states for reading each row */
 
 enum time_constants
 { 
-    SETTLE_KEY_BOUNCE = 10,     // milliseconds
+    SETTLE_KEY_BOUNCE = 1,
 };
 
 
@@ -369,7 +494,8 @@ enum worker_states
     WORKER_PULSE_ON,
     WORKER_PULSE_OFF,
     WORKER_WAITING,
-    WORKER_DONE
+    WORKER_DONE,
+    
 };
 
 
@@ -612,6 +738,12 @@ class usb_keyboard_class
     private:
         struct key_code m_key_codes[0xff];
 };
+
+
+
+
+
+
 class navputter_keypad_class
 {
     enum
@@ -634,12 +766,58 @@ public:
     ((((_port_in_) & ( 1<< _bit_ )) >> _bit_) << _pos_)
 
     void poll(void);
-private:
     uint8_t  m_keypad_state;
-    uint8_t  m_next_state;
-    uint8_t  m_col;
     uint32_t m_until;
+    uint8_t  m_next_state;
+    uint8_t  m_keystate[ MAX_KEY_COLS ];
+    uint8_t  m_last_keystate[ MAX_KEY_COLS ];
+    uint8_t  m_keypress[ MAX_KEY_COLS ];
+    uint8_t  m_keydown[ MAX_KEY_COLS ];
+private:
+    uint8_t  m_col;
     uint8_t  m_cur_rows;
+};
+
+#define ROW_PINS \
+    _K_PIN_( KEYPAD_R0, DDRD, PORTD, PIND, 0 ) \
+    _K_PIN_( KEYPAD_R1, DDRD, PORTD, PIND, 1 ) \
+    _K_PIN_( KEYPAD_R2, DDRD, PORTD, PIND, 2 ) \
+    _K_PIN_( KEYPAD_R3, DDRD, PORTD, PIND, 3 ) \
+    _K_PIN_( KEYPAD_R4, DDRD, PORTD, PIND, 4 ) \
+    _K_PIN_( KEYPAD_R5, DDRD, PORTD, PIND, 6 ) 
+
+#define COL_PINS \
+    _K_PIN_( KEYPAD_C0, DDRD, PORTD, PIND, 7 ) \
+    _K_PIN_( KEYPAD_C1, DDRB, PORTB, PINB, 1 ) \
+    _K_PIN_( KEYPAD_C2, DDRB, PORTB, PINB, 2 ) \
+    _K_PIN_( KEYPAD_C3, DDRB, PORTB, PINB, 3 ) \
+    _K_PIN_( KEYPAD_C4, DDRB, PORTB, PINB, 4 ) \
+    _K_PIN_( KEYPAD_C5, DDRB, PORTB, PINB, 5 ) 
+
+class navputter_tenkey_keypad_class : public navputter_keypad_class
+{
+public:
+    enum col_enums
+    {
+        #define _K_PIN_( e, ddr, port, inpin, pin ) e,
+            COL_PINS
+        #undef _K_PIN_
+    };
+
+    enum row_enums
+    {
+        #define _K_PIN_( e, ddr, port, inpin, pin ) e,
+            ROW_PINS
+        #undef _K_PIN_
+    };
+
+    void begin();
+    void poll();
+    void trigger();
+private:
+    uint8_t m_row_state;
+    uint8_t m_col_state;
+    uint8_t m_col;
 };
 
 
@@ -679,7 +857,26 @@ class navputter_eeprom_class : public generic_eeprom_class
 #define INVALID_KEYSTATE ((uint8_t)0xff)
 
 
-
+enum
+{
+    READ_COMMAND = 0,
+    READ_INT,   
+    SET_VALUE,
+    READ_PORT,
+    CALL_FUNC,
+    READ_PARAM,
+    CONVERT_VALUE,
+    UNPRESS_KEY,
+    EDIT_COMMAND,
+    WRITE_COMMAND,
+    EDIT_KEY,
+    READ_LOAD_INT,
+    READ_SAVE_INT,
+    LOAD_KEYMAP,
+    SAVE_KEYMAP,
+    EDIT_PINMAP,
+    EDIT_PIN_ENTRY,
+};
 
 
     
@@ -699,35 +896,22 @@ public:
     {
         m_state = state;
     }
+    void read_command(void)
+    {
+        set_state(READ_COMMAND);
+        usage();
+    }
 private:
     uint8_t m_state;
 
 };
 
-enum
-{
-    READ_COMMAND = 0,
-    READ_INT,   
-    SET_VALUE,
-    READ_PORT,
-    CALL_FUNC,
-    READ_PARAM,
-    CONVERT_VALUE,
-    UNPRESS_KEY,
-    EDIT_COMMAND,
-    WRITE_COMMAND,
-    EDIT_KEY,
-    READ_LOAD_INT,
-    READ_SAVE_INT,
-    LOAD_KEYMAP,
-    SAVE_KEYMAP,
-};
 
 
 #define _SER_CMDS_\
     _SC_( 'h', "Show this help.", usage )\
     _SC_( 'e', "Show or update eeprom.", handle_eeprom )\
-    _SC_( 'g', "Interface with GPIO via serial.", serial_gpio )\
+    _SC_( 'g', "Interface with GPIO via serial.", serial_gpio ) \
     _SC_( 'w', "Write config to eeprom.", write_eeprom )\
     _SC_( 'k', "Show or edit additional keymaps.", handle_keymaps)
 // end of _SER_CMDS_
@@ -756,6 +940,17 @@ public:
     virtual void usage(void);
     int validate_keymap( int cmd, int val );
     int no_check( int cmd, int val );
+
+    void read_int(void)
+    {
+        set_state( READ_INT );
+        m_position =0;
+    }
+    void set_value(void)
+    {
+        m_int_value[m_position]=0;
+        set_state( SET_VALUE );
+    }
 
 private:
     bool    m_dirty;
@@ -810,7 +1005,11 @@ public:
     void gpio_clear_bit( void );
     void gpio_set_ddr_bit( void );
     void gpio_clear_ddr_bit( void );
-   
+    void read_param(void)
+    {
+        m_pos=0;
+        set_state(READ_PARAM);
+    } 
 private:
     uint8_t m_cmd;                          // current command
     uint8_t m_pos;                          // current index in m_value for integer read
@@ -844,6 +1043,7 @@ enum keycode_edit_enums
     _KML_( 's', "save keymap", save_keymap )\
     _KML_( 'e', "edit keymap", edit_keymap )\
     _KML_( 'd', "dump all keymaps", dump_keymap )\
+    _KML_( 'p', "edit pin map",edit_pin_map)\
     _KML_( 'q', "quit", quit )
    
 
@@ -863,6 +1063,7 @@ enum keycode_modifier_cycle_order
 #define _MODL_( _enum_, _str_, _sc_ ) _enum_,
     KEYCODE_MODIFIER_LIST
 #undef _MODL_
+    KC_MOD_LAST
 }; 
   
 #define KEYCODE_KEY_LIST \
@@ -973,6 +1174,7 @@ enum key_scancode_index
 #define _KEYL_( _lc_, _uc_, _sc_ ) key_code_enum_##_sc_,
     KEYCODE_KEY_LIST
 #undef _KEYL_
+    key_code_enum_last
 };    
 
 
@@ -984,6 +1186,12 @@ typedef struct keyedit_state
 }keyedit_state_t;
  
 
+#define KEY_PIN_MENU\
+    _KPM_( 'c', "Next Column", inc_pin_edit_col )\
+    _KPM_( 'r', "Next Row", inc_pin_edit_row )\
+    _KPM_( 'e', "Edit", edit_pin_entry )\
+    _KPM_( 'q', "Quit", read_command )
+    
  
 class navputter_keycode_menu_class: public navputter_menu_base_class
 {
@@ -991,15 +1199,17 @@ class navputter_keycode_menu_class: public navputter_menu_base_class
     virtual void    end(void);
     virtual void    poll(void);
     virtual void    usage(void);
+    void            keycode_edit_usage(void);
     void            edit_keymap(void);
     void            quit(void);
     void            show_keymap(void);
     void            save_keymap(void);
-    void            dump_keymap(void);
+    void            edit_pin_map(void);
+    void            exit_pin_map(void);
+    void            edit_pin_map_usage(void);
     void            load_keymap(void);
-    void            fill_keymap(void);
-    void            format_key_action( uint8_t row, uint8_t col);
-    uint16_t        format_scancode( uint16_t sc );
+    void            format_key_action(uint8_t seq);
+    void            format_scancode( uint16_t sc );
     void            key_edit_usage( void );
     void            next_modifier(void);
     void            prev_modifier(void);
@@ -1011,13 +1221,42 @@ class navputter_keycode_menu_class: public navputter_menu_base_class
     void            set_keycode_display_indicies(void);
     void            save_keymap_to_eeprom( uint8_t ix );
     void            edit_next(void);
+    void            dump_keymap(void);
+    void            inc_pin_edit_col(void)
+    {
+        m_edit_pin_col++;
+        if ( m_edit_pin_col == MAX_KEY_COLS ) m_edit_pin_col = 0;
+    }
+    void            inc_pin_edit_row(void)
+    {
+        m_edit_pin_row++;
+        if ( m_edit_pin_row == MAX_KEY_ROWS ) m_edit_pin_row = 0;
+    }
+    void exit_edit_entry()
+    {
+        set_state( EDIT_KEY );
+        keycode_edit_usage();
+        m_int_ix=0;
+    }
+    void edit_pin_entry()
+    {
+        set_state( EDIT_PIN_ENTRY );
+        m_int_ix = 0;
+        edit_pin_field_usage();
+    }
+    void edit_pin_field_usage(void);
+ 
 private:
+    uint8_t         m_edit_pin_row;
+    uint8_t         m_edit_pin_col;
     uint8_t         m_cmd;
     uint8_t         m_row;
     uint8_t         m_col;
     uint8_t         m_edit_key;
     keyedit_state_t m_ks[2]; 
-    key_map_t       m_key_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+    uint8_t         m_key_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+    key_map_t       m_key_seq_map[MAX_KEY_SEQUENCES];
+    uint8_t         m_seq;
 #define MAX_INT_SIZE 8 
     uint8_t         m_int_value[ MAX_INT_SIZE ];
     uint8_t         m_int_ix;
@@ -1046,10 +1285,8 @@ public:
     void begin()
     {
         memset( &m_config, 0, sizeof( m_config ) );
-        memset( m_keystate, INVALID_KEYSTATE, sizeof( m_keystate) );
-        memset( m_keypress, 0, sizeof( m_keypress) );
         memset( m_cur_map, 0, sizeof( m_cur_map) );
-
+        memset( m_seq_map, 0, sizeof( m_seq_map) );
 	    SetupHardware();
 	    GlobalInterruptEnable();
         m_serial.begin(9600);
@@ -1065,6 +1302,7 @@ public:
         m_cur_menu = NULL;
         m_eeprom_dirty = false;
     }
+    void read_eeprom_keymap(void);
     void set_menu( class navputter_menu_base_class *menu )
     {
         if ( m_cur_menu )
@@ -1081,10 +1319,22 @@ public:
         m_cur_menu->end();
         m_cur_menu=NULL;
     }
-    void set_keymap( key_map_t *map, size_t size )
+    void set_keymap( void )
     {
-        memcpy( m_cur_map, map, size );
+        int i=0;
+#define _KM_(c1,c2,c3,c4,c5,c6) m_cur_map[i][0]=c1; m_cur_map[i][1]=c2; m_cur_map[i][2]=c3; m_cur_map[i][3]=c4; m_cur_map[i][4]=c5; m_cur_map[i][5]=c6; i++;
+        KEYPAD_PIN_MAP
+#undef _KM_
     }
+
+    void set_seq_map( void )
+    {
+#define KP_KEY( _sc_, _ev_, _act_, _x_, _y_ ) \
+        m_seq_map[_ev_]=_act_;
+        KP_KEY_LIST
+#undef KP_KEY
+    }
+
 
     void poll()
     {
@@ -1094,9 +1344,14 @@ public:
 
     void set_dirty(bool dirty=true) {m_eeprom_dirty=dirty;}
     bool is_dirty(void) {return m_eeprom_dirty;}
-    key_map_t *get_map()
+    uint8_t *get_map()
     {
-        return  (key_map_t *)m_cur_map;
+        return  (uint8_t *)m_cur_map;
+    }
+
+    key_map_t *get_seq_map(void)
+    {
+        return  m_seq_map;
     }
 
     void usage(void);
@@ -1109,14 +1364,13 @@ public:
     navputter_watchdog_class    m_watchdog; 
     navputter_serial_class      m_serial;
     usb_keyboard_class          m_keyboard;
-    navputter_keypad_class      m_keypad;
+    //navputter_keypad_class      m_keypad;
+    navputter_tenkey_keypad_class      m_keypad;
     navputter_eeprom_class      m_eeprom;
     navputter_menu_base_class   *m_cur_menu;
     eeprom_header_t             m_config;
-    uint8_t                     m_keystate[ MAX_KEY_COLS ];
-    uint8_t                     m_last_keystate[ MAX_KEY_COLS ];
-    uint8_t                     m_keypress[MAX_KEY_ROWS][ MAX_KEY_COLS ];
-    key_map_t                   m_cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+    uint8_t                     m_cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
+    key_map_t                   m_seq_map[MAX_KEY_SEQUENCES];
     bool                        m_eeprom_dirty;
 };
 

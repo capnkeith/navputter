@@ -27,7 +27,8 @@
 MCU          = atmega32u4
 ARCH         = AVR8
 BOARD        = LEONARDO
-F_CPU        = 16000000
+#F_CPU        = 16000000
+F_CPU        = 8000000
 #AVRDUDE_PROGRAMMER = avr109
 AVRDUDE_PROGRAMMER = usbasp
 #AVRDUDE_PROGRAMMER = usbtiny
