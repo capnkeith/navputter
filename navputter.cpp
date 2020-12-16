@@ -47,11 +47,13 @@ char global_str_eoln[] = "\n\r";
 #undef _KEL_
 
 
-void* operator new(size_t objsize) { 
+void* operator new(size_t objsize) 
+{ 
     return malloc(objsize); 
 } 
 
-void operator delete(void* obj) { 
+void operator delete(void* obj) 
+{ 
     free(obj); 
 } 
 
@@ -252,22 +254,9 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
                 KEY.write_scancode( myputter.m_seq_map[seq].key_press[1] );
             }
         break;
-        case KA_SPECIAL_ACTION:
+        case KA_TOGGLE_KEY_ARROWS:
             if ( event == EVENT_KEYPAD_DOWN )
-            {
-                switch( myputter.m_seq_map[seq].key_press[0] )
-                {
-                    case SA_TOGGLE_KEY_ARROWS:
-                        CONFIG.key_arrows = (CONFIG.key_arrows < ARROW_CONFIG_FAST_KEY ) ?  CONFIG.key_arrows + 1 : 0;
-                        break;
-                    case SA_SHOW_KEY:
-                        SERIAL.print_P( show_key_string, row, col, seq );
-                        break;
-                    default:
-                        break;
-                }
-            }
-            break;
+                CONFIG.key_arrows = (CONFIG.key_arrows < ARROW_CONFIG_FAST_KEY ) ?  CONFIG.key_arrows + 1 : 0;
         break;
         case KA_MOUSE_LEFT:
         case KA_MOUSE_RIGHT:
@@ -1410,11 +1399,6 @@ void navputter_keycode_menu_class::format_scancode( uint16_t sc)
 KEY_ACTION_LIST;
 #undef _KA_
 
-#define _SAL_( _ev_, _desc_ ) \
-    static const char keycode_menu_special##_ev_[] PROGMEM = _desc_;
-_SPECIAL_ACTION_LIST_
-#undef _SAL_
-
 
 void navputter_keycode_menu_class::format_key_action( uint8_t seq )
 {
@@ -1429,11 +1413,6 @@ void navputter_keycode_menu_class::format_key_action( uint8_t seq )
         case KA_KEY_SCANCODE_ACTION:
             if ( m_key_seq_map[seq].key_press[0] ) { format_scancode( m_key_seq_map[seq].key_press[0] ); }
             if ( m_key_seq_map[seq].key_press[1] ) { SERIAL.write(","); format_scancode( m_key_seq_map[seq].key_press[1]); }
-            break;
-        case KA_SPECIAL_ACTION:
-            #define _SAL_( _ev_, _desc ) if ( _ev_ == m_key_seq_map[seq].key_press[0] ) SERIAL.print( "%S%s", keycode_menu_special##_ev_, EOLN ); 
-                _SPECIAL_ACTION_LIST_
-            #undef _SAL_ 
             break;
     }
 }

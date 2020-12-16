@@ -48,19 +48,6 @@ enum error_codes
 
 #define MAX_KEY_ARROW_STATE 2   
 
-#define _SPECIAL_ACTION_LIST_\
-    _SAL_( SA_POWER_CYCLE,        "Power off" )\
-    _SAL_( SA_TOGGLE_KEY_ARROWS,  "Cycle key arrows" )\
-    _SAL_( SA_SHOW_KEY,           "Show Key" )\
-/* end of list */
-
-#define _SAL_( _ev_, _desc_ ) _ev_,
-enum special_actions
-{
-    _SPECIAL_ACTION_LIST_
-};
-#undef _SAL_
-
 
 #define MAX_MOUSE_STEP 64
 
@@ -113,13 +100,13 @@ enum special_actions
 
 #define C_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( 0,  HID_KEYBOARD_SC_C)}
 
-#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), SA_POWER_CYCLE}      /* alt + gives slow zoom in */
+#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), KA_POWER_CYCLE}      /* alt + gives slow zoom in */
 #define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, '3', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)} /* alt - gives slow zoom out */
 #define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, 'a', SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                              /* f2 is follow */
 #define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, 'b', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                    /* ctrl r is route */
 #define COLOR_KEY          {KA_KEY_SCANCODE_ACTION, 'c', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTALT,  HID_KEYBOARD_SC_C)}                    /* alt C is color change */
 #define MOB_KEY            {KA_KEY_SCANCODE_ACTION, 'd', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_SPACE)}                /* mob is ctrl space */ 
-#define TOGGLE_KEY_ARROWS  {KA_SPECIAL_ACTION,      '7', SA_TOGGLE_KEY_ARROWS}                                                           /* toggler mouse, slow key, fast key*/
+#define TOGGLE_KEY_ARROWS  {KA_TOGGLE_KEY_ARROWS }}   /* toggler mouse, slow key, fast key*/
 
 /* these mouse moves have 2 additional arguments, a slow key scancode, and a fast key scancodes used in the key arrow modes instead of mouse moves.
    so, MOUSE_UP will be a mouse action in key_arrow mode 0, an ALT up arrow in key_arrow mode 1 and an up arrow in key mode 2.                      */
@@ -128,9 +115,10 @@ enum special_actions
 #define MOUSE_RIGHT        {KA_MOUSE_RIGHT, '6', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
 #define MOUSE_DOWN         {KA_MOUSE_DOWN,  '8', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_DOWN_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_DOWN_ARROW)}  
 
-#define MOUSE_LT_CLICK {KA_MOUSE_LT_CLICK,0}
-#define MOUSE_RT_CLICK {KA_MOUSE_RT_CLICK,0}
-#define SHOW_KEY       {KA_SPECIAL_ACTION,0, SA_SHOW_KEY}
+#define MOUSE_LT_CLICK      {KA_MOUSE_LT_CLICK,0}
+#define MOUSE_RT_CLICK      {KA_MOUSE_RT_CLICK,0}
+#define SHOW_KEY            {KA_REPORT_KEY,0}
+#define TOGGLE_MOUSE_SPEED  {KA_MOUSE_STEP,0}
 
 #if 0 /* 4x4 map */
 key_map_t   base_map[4][4] =
@@ -166,7 +154,7 @@ key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
     KP_KEY('7',   KEY_SEQ_7,    SHOW_KEY,           2, 1 )\
     KP_KEY('8',   KEY_SEQ_8,    C_KEY,              3, 1 )\
     KP_KEY('9',   KEY_SEQ_9,    MOUSE_LEFT,         0, 2 )\
-    KP_KEY('a',   KEY_SEQ_10,   TOGGLE_KEY_ARROWS,  1, 2 )\
+    KP_KEY('a',   KEY_SEQ_10,   TOGGLE_MOUSE_SPEED, 1, 2 )\
     KP_KEY('b',   KEY_SEQ_11,   MOUSE_RIGHT,        2, 2 )\
     KP_KEY('c',   KEY_SEQ_12,   SHOW_KEY,           3, 2 )\
     KP_KEY('d',   KEY_SEQ_13,   SHOW_KEY,           0, 3 )\
@@ -275,6 +263,8 @@ void cmd_mapm( FILE *fp, char *str );
     _KA_( KA_MOUSE_MID_DBL_CLICK,   "Mouse-MDK",  "Mouse middle double click.")\
     _KA_( KA_MOUSE_STEP,            "M Speed",    "Toggle mouse speed.")\
     _KA_( KA_REPORT_KEY,            "Show Key",   "Report keypress only.")\
+    _KA_( KA_TOGGLE_KEY_ARROWS,     "ToggleMov",  "Toggle movement type (mouse,keyslow,keyfast).")\
+    _KA_( KA_POWER_CYCLE,           "PowerCycle", "Power on/off.")\
 /* end of KEY_ACTION_LIST */
 
 
