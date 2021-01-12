@@ -21,6 +21,7 @@ extern "C"
 extern volatile uint32_t global_ticks;
 #define MAX_TMP_BUFFER_SIZE 128
 extern uint8_t global_tmp_buf[MAX_TMP_BUFFER_SIZE];
+extern char global_tmp_buffer[];
 enum key_arrow_states
 {
     ARROW_CONFIG_MOUSE = 0,
@@ -52,11 +53,10 @@ enum error_codes
 #define MAX_MOUSE_STEP 64
 
 
-#define SERIAL_STARTUP_DELAY_MS 4000
+#define SERIAL_STARTUP_DELAY_MS 1000
 
 #define MAX_KEY_ROWS        6 
 #define MAX_KEY_COLS        6 
-#define MAX_KEY_SEQUENCES   19
 
 
 
@@ -100,7 +100,7 @@ enum error_codes
 
 #define C_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( 0,  HID_KEYBOARD_SC_C)}
 
-#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), KA_POWER_CYCLE}      /* alt + gives slow zoom in */
+#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), KEY_SEQ_20}      
 #define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, '3', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)} /* alt - gives slow zoom out */
 #define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, 'a', SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                              /* f2 is follow */
 #define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, 'b', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                    /* ctrl r is route */
@@ -119,6 +119,7 @@ enum error_codes
 #define MOUSE_RT_CLICK      {KA_MOUSE_RT_CLICK,0}
 #define SHOW_KEY            {KA_REPORT_KEY,0}
 #define TOGGLE_MOUSE_SPEED  {KA_MOUSE_STEP,0}
+#define POWER_CYCLE         {KA_POWER_CYCLE,0}
 
 #if 0 /* 4x4 map */
 key_map_t   base_map[4][4] =
@@ -164,12 +165,14 @@ key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
     KP_KEY('h',   KEY_SEQ_17,   MOUSE_LT_CLICK,     0, 4 )\
     KP_KEY('i',   KEY_SEQ_18,   SHOW_KEY,           1, 4 )\
     KP_KEY('j',   KEY_SEQ_19,   MOUSE_RT_CLICK,     2, 4 )\
+    KP_KEY('k',   KEY_SEQ_20,   POWER_CYCLE,        0xff,0xff)\
 /* end of KP_KEY_LIST */
 
 #define KP_KEY(_sc_, _ev_, _act_, _x_, _y_) _ev_,
 enum key_seq_enum
 {
     KP_KEY_LIST
+    MAX_KEY_SEQUENCES
 };
 #undef KP_KEY
 
@@ -222,14 +225,33 @@ typedef struct __attribute__((packed)) eeprom_layout
 #define MIN_HOLD_TIME( _t_ ) ((_t_) & 0x0f)
 #define MAX_HOLD_TIME( _t_ ) (((_t_) & 0xf0) >> 4)
 
+
+
 typedef struct key_map
 {
     uint8_t      action;                /* action on pressing the key */
-    uint8_t      short_cut;             /* char on the keypad for reference */
-    uint16_t     key_press[2];          /* up to 2 keys pressed */
+    uint8_t      unused;
+    union   
+    {
+        uint16_t     key_press[2];          /* up to 2 keys pressed */
+        uint8_t      key_press_8[4];
+    };
     uint8_t      hold_time;             /* bits 0-3 are min hold seconds bits 4-7 are max hold seconds */
     uint8_t      hold_action;           /* KA_SPECIAL_ACTION after holding between min and max time and releasing */
 }key_map_t;
+
+
+typedef struct act_map
+{
+    uint8_t     action;
+    uint8_t     params[7];
+}act_map_t;
+
+union key_union
+{
+    key_map_t   key_seq;
+    act_map_t   act_seq;
+};
 
 
 void poll_buttons(void);
@@ -247,33 +269,48 @@ void cmd_mapm( FILE *fp, char *str );
 
 #define KA_TO_NP_MOUSE_DIR( ka ) ((ka)-KA_MOUSE_UP)
 
+#define NO_FIELDS\
+    _KA_KF_( 0, 0, 0, unused, 0, 0 )
+
+#define KEY_FIELDS\
+    _KA_KF_( KEY_VAL_0,         0, 0xff,                key_press_8[0], 0xff, 0 ) \
+    _KA_KF_( KEY_MOD_0,         0, 0xff,                key_press_8[1], 0xff, 0 ) \
+    _KA_KF_( KEY_VAL_1,         0, 0xff,                key_press_8[2], 0xff, 0 ) \
+    _KA_KF_( KEY_MOD_1,         0, 0xff,                key_press_8[3], 0xff, 0 ) \
+    _KA_KF_( KEY_HOLD_TIME_MIN, 0, 0xff,                hold_time,      0xf0, 4 ) \
+    _KA_KF_( KEY_HOLD_TIME_MAX, 0, 0xff,                hold_time,      0x0f, 0 ) \
+    _KA_KF_( HOLD_ACTION,       0, MAX_KEY_SEQUENCES,   hold_action,    0xff, 8 ) \
+/* end of KEY_FIELDS */
+enum 
+{
+#define _KA_KF_( _ev_, _min_, _max_, _field_, _mask_, _shift_ ) _ev_,
+    KEY_FIELDS
+#undef _KA_KF_
+};
+
 #define KEY_ACTION_LIST\
-    _KA_( KA_NO_ACTION,             "Nothing",    "Do nothing." )\
-    _KA_( KA_KEY_SCANCODE_ACTION,   "Keypress:",  "Send key seq.")\
-    _KA_( KA_SPECIAL_ACTION,        "Special",    "Special action.")\
-    _KA_( KA_MOUSE_UP,              "Mouse-UP",   "Mouse up." )\
-    _KA_( KA_MOUSE_DOWN,            "Mouse-DN",   "Mouse down." )\
-    _KA_( KA_MOUSE_LEFT,            "Mouse-LT",   "Mouse left." )\
-    _KA_( KA_MOUSE_RIGHT,           "Mouse-RT",   "Mouse right." )\
-    _KA_( KA_MOUSE_LT_CLICK,        "Mouse-LK",   "Mouse left click.")\
-    _KA_( KA_MOUSE_RT_CLICK,        "Mouse-RK",   "Mouse right click.")\
-    _KA_( KA_MOUSE_RT_DBL_CLICK,    "Mouse-RDK",  "Mouse right double click.")\
-    _KA_( KA_MOUSE_LT_DBL_CLICK,    "Mouse-LDK",  "Mouse left double click.")\
-    _KA_( KA_MOUSE_MID_CLICK,       "Mouse-MK",   "Mouse middle click.")\
-    _KA_( KA_MOUSE_MID_DBL_CLICK,   "Mouse-MDK",  "Mouse middle double click.")\
-    _KA_( KA_MOUSE_STEP,            "M Speed",    "Toggle mouse speed.")\
-    _KA_( KA_REPORT_KEY,            "Show Key",   "Report keypress only.")\
-    _KA_( KA_TOGGLE_KEY_ARROWS,     "ToggleMov",  "Toggle movement type (mouse,keyslow,keyfast).")\
-    _KA_( KA_POWER_CYCLE,           "PowerCycle", "Power on/off.")\
+    _KA_( KA_NO_ACTION,             "Nothing",    NO_FIELDS)\
+    _KA_( KA_KEY_SCANCODE_ACTION,   "Keypress:",  KEY_FIELDS)\
+    _KA_( KA_MOUSE_UP,              "Mouse-UP",   NO_FIELDS)\
+    _KA_( KA_MOUSE_DOWN,            "Mouse-DN",   NO_FIELDS)\
+    _KA_( KA_MOUSE_LEFT,            "Mouse-LT",   NO_FIELDS)\
+    _KA_( KA_MOUSE_RIGHT,           "Mouse-RT",   NO_FIELDS)\
+    _KA_( KA_MOUSE_LT_CLICK,        "Mouse-LK",   NO_FIELDS)\
+    _KA_( KA_MOUSE_RT_CLICK,        "Mouse-RK",   NO_FIELDS)\
+    _KA_( KA_MOUSE_RT_DBL_CLICK,    "Mouse-RDK",  NO_FIELDS)\
+    _KA_( KA_MOUSE_LT_DBL_CLICK,    "Mouse-LDK",  NO_FIELDS)\
+    _KA_( KA_MOUSE_MID_CLICK,       "Mouse-MK",   NO_FIELDS)\
+    _KA_( KA_MOUSE_MID_DBL_CLICK,   "Mouse-MDK",  NO_FIELDS)\
+    _KA_( KA_MOUSE_STEP,            "M Speed",    NO_FIELDS)\
+    _KA_( KA_REPORT_KEY,            "Show Key",   NO_FIELDS)\
+    _KA_( KA_TOGGLE_KEY_ARROWS,     "ToggleMov",  NO_FIELDS)\
+    _KA_( KA_POWER_CYCLE,           "PowerCycle", NO_FIELDS)\
 /* end of KEY_ACTION_LIST */
-
-
-
 
 
 enum key_map_actions
 {
-#define _KA_( _e_, s, d ) _e_,
+#define _KA_( _e_, _s_, _m_ ) _e_,
     KEY_ACTION_LIST
 #undef _KA_
     KA_LAST_ACTION
@@ -461,19 +498,18 @@ class navputter_serial_class : public usb_serial_class
         {
             va_list args;
             va_start (args, str);
-            vsprintf( (char *)global_tmp_buf, str, args);
+            vsprintf( (char *)global_tmp_buffer, str, args);
             va_end (args);
-            return write( (char *)global_tmp_buf);
+            return write( (char *)global_tmp_buffer);
         }
         int print_P( const char *str, ... )
         {
             va_list args;
             va_start (args, str);
-            vsprintf_P( (char *)global_tmp_buf, str, args);
+            vsprintf_P( (char *)global_tmp_buffer, str, args);
             va_end (args);
-            return write( (char *)global_tmp_buf);
+            return write( (char *)global_tmp_buffer);
         }
-            
 };
 
 
@@ -1011,13 +1047,11 @@ private:
 };
 
 #define KEYCODE_EDIT_LIST\
-    _KEL_( 'a', "next action",         next_action,    KEYVAL_NEXT_ACTION )\
-    _KEL_( 's', "prev acton",          prev_action,    KEYVAL_PREV_ACTION )\
-    _KEL_( 'd', "next key value",      next_key,       KEYVAL_NEXT_KEY )\
-    _KEL_( 'f', "prev key value",      prev_key,       KEYVAL_PREV_KEY )\
-    _KEL_( 'z', "modifier next",       next_modifier,  KEYMOD_NEXT_MOD )\
-    _KEL_( 'x', "modifier prev",       prev_modifier,  KEYMOD_PREV_MOD )\
-    _KEL_( 'n', "edit next",           edit_next,      KEYMOD_NEXT )\
+    _KEL_( 'd', "next action",         next_action,    KEYVAL_NEXT_ACTION )\
+    _KEL_( 'f', "prev acton",          prev_action,    KEYVAL_PREV_ACTION )\
+    _KEL_( ' ', "next field",          next_field,     KEYVAL_NEXT_FIELD  )\
+    _KEL_( 'j', "value next",          next_value,     KEYMOD_NEXT_VALUE )\
+    _KEL_( 'k', "value prev",          prev_value,     KEYMOD_PREV_VALUE )\
     _KEL_( 'q', "quit",                quit_edit,      KEYVAL_QUIT )
 
 enum keycode_edit_enums
@@ -1185,6 +1219,7 @@ typedef struct keyedit_state
  
 class navputter_keycode_menu_class: public navputter_menu_base_class
 {
+public:
     virtual void    begin(void);
     virtual void    end(void);
     virtual void    poll(void);
@@ -1205,13 +1240,16 @@ class navputter_keycode_menu_class: public navputter_menu_base_class
     void            prev_modifier(void);
     void            next_action(void);
     void            prev_action(void);
-    void            prev_key(void);
-    void            next_key(void);
+    void            prev_value(void);
+    void            next_value(void);
+    void            next_field(void);
     void            quit_edit(void);
     void            set_keycode_display_indicies(void);
     void            save_keymap_to_eeprom( uint8_t ix );
     void            edit_next(void);
     void            dump_keymap(void);
+    void            set_action(uint8_t action);
+    void            set_field(uint8_t field);
     void            inc_pin_edit_col(void)
     {
         m_edit_pin_col++;
@@ -1250,6 +1288,12 @@ private:
 #define MAX_INT_SIZE 8 
     uint8_t         m_int_value[ MAX_INT_SIZE ];
     uint8_t         m_int_ix;
+    uint8_t         m_edit_field;
+    uint8_t         m_field_min;
+    uint8_t         m_field_max;
+    uint8_t         m_field_mask;
+    uint8_t         m_field_shift;
+    uint8_t         *m_field_ptr;
 };
 
 
@@ -1297,9 +1341,7 @@ public:
     {
         if ( m_cur_menu )
         {
-            m_cur_menu->end();
-        }
-        m_cur_menu = menu;       
+            m_cur_menu->end(); } m_cur_menu = menu;       
         m_cur_menu->begin();
         m_cur_menu->usage();
     }
