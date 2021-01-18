@@ -47,6 +47,16 @@ char global_tmp_buffer[128]="";
 #undef _KEL_
 
 
+void navputter_class::set_seq_map( void )
+{
+#define ACT_KEYSEQ(a,m0,k0,m1,k1,hold,act) {a,{m0,k0,m1,k1,hold,act}}
+
+#define KP_KEY( _sc_, _ev_, _init_, _x_, _y_ ) \
+        m_seq_map[_ev_] = _init_;
+        KP_KEY_LIST
+#undef KP_KEY
+}
+
 void* operator new(size_t objsize) 
 { 
     return malloc(objsize); 
@@ -75,7 +85,11 @@ navputter_class *PUTT=NULL;
 volatile uint32_t global_ticks=0;
 ISR (TIMER1_COMPA_vect)
 {
+#if (F_CPU == 8000000)
+    global_ticks+=4; // double ticks for half speed (3.3v) versions. 
+#else
     global_ticks++;
+#endif
 }
 
 void start_timer(uint32_t msecs);
@@ -223,21 +237,23 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
     uint8_t action = myputter.m_seq_map[seq].action;
     static uint32_t last_hold = 0;
 
-    if ( myputter.m_seq_map[seq].hold_action )
+    if ( myputter.m_seq_map[seq].params.keys.hold_action )
     {
         if (event == EVENT_KEYPAD_UP)
         {
             uint32_t delta = global_ticks - last_hold;
             delta /= 1000;
-            if ( delta >= MIN_HOLD_TIME( myputter.m_seq_map[seq].hold_time ) &&  
-            ( delta <= MAX_HOLD_TIME( myputter.m_seq_map[seq].hold_time) ) )
+            if ( delta >= MIN_HOLD_TIME( myputter.m_seq_map[seq].params.keys.hold_time ) &&  
+            ( delta <= MAX_HOLD_TIME( myputter.m_seq_map[seq].params.keys.hold_time) ) )
             {
-                action = myputter.m_seq_map[seq].hold_action;
+                action = myputter.m_seq_map[seq].params.keys.hold_action;
+                SERIAL.print("hold time %d actoin %d\n\r", delta, action );
             }
         }
         else
         {
             last_hold = global_ticks;
+            SERIAL.print("last hold =%ld\n",last_hold);
         } 
     }       
 
@@ -246,8 +262,8 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
         case KA_KEY_SCANCODE_ACTION:
             if ( event == EVENT_KEYPAD_DOWN )
             {
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[0] );
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[1] );
+                KEY.write_scancode( myputter.m_seq_map[seq].params.keys.key_press[0] );
+                KEY.write_scancode( myputter.m_seq_map[seq].params.keys.key_press[1] );
             }
         break;
         case KA_TOGGLE_KEY_ARROWS:
@@ -264,15 +280,15 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             }
             else if ( CONFIG.key_arrows == ARROW_CONFIG_SLOW_KEY )
             {
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[0] );
+                KEY.write_scancode( myputter.m_seq_map[seq].params.keys.key_press[0] );
             }
             else
             {
-                KEY.write_scancode( myputter.m_seq_map[seq].key_press[1] );
+                KEY.write_scancode( myputter.m_seq_map[seq].params.keys.key_press[1] );
             }
             break;
         case KA_REPORT_KEY:
-            SERIAL.print("# report %s : %d,%d = %c%s", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, myputter.m_seq_map[seq].key_press[0], EOLN );
+            SERIAL.print("# report %s : %d,%d = %c%s", (event == EVENT_KEYPAD_DOWN)?"DOWN":"UP", row, col, myputter.m_seq_map[seq].params.keys.key_press[0], EOLN );
             break;
         case KA_MOUSE_LT_CLICK:
             MOUSE.click( MB_LEFT, event );
@@ -290,6 +306,26 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
                 if ( CONFIG.mouse_step >= MAX_MOUSE_STEP ) CONFIG.mouse_step = 1;
             }
             break;
+        case KA_PULSE:
+            SERIAL.print("pulse\n\r");
+/*
+            SERIAL.print("A pulse port=%c, pin=%d, l1=%d, l2=%d, hold1=%d, hold2=%d, cyc=%d, mulhold=%d, mulcyc=%d\n\r",
+                ((myputter.m_seq_map[seq].params.raw[0] & 0xf0) >> 4) + 'B',
+                myputter.m_seq_map[seq].params.raw[0] & 0x0f,
+                myputter.m_seq_map[seq].params.raw[1] & 0xf0,
+                myputter.m_seq_map[seq].params.raw[1] & 0x0f,
+                myputter.m_seq_map[seq].params.raw[2],
+                myputter.m_seq_map[seq].params.raw[3],
+                myputter.m_seq_map[seq].params.raw[4],
+                (myputter.m_seq_map[seq].params.raw[5] & 0xf0) >> 4,
+                myputter.m_seq_map[seq].params.raw[5] & 0x0f
+              );
+*/
+            break;
+ //    navputter_worker_pulse_class   work;
+//    work.begin('d', 1, 10, 0, 10, 100 );
+//    WORKERS.start_job( &work );
+                
         default:
             assert(0);
             break;
@@ -1084,7 +1120,7 @@ void navputter_keycode_menu_class::end(void)
 
 void navputter_keycode_menu_class::usage(void)
 {
-//    uint16_t avail = (EEPROM_SIZE - EEPROM_HDR_RESERVED)-(CONFIG.key_maps * sizeof(key_map_t));
+//    uint16_t avail = (EEPROM_SIZE - EEPROM_HDR_RESERVED)-(CONFIG.key_maps * sizeof(action_map_t));
 #define _KML_( _cmd_, _str_, _func_ ) SERIAL.print("%c) %s%s", _cmd_,_str_, EOLN );
     KEYCODE_MENU_LIST
 #undef _KML_
@@ -1098,11 +1134,11 @@ void navputter_keycode_menu_class::set_keycode_display_indicies(void)
 #undef _KA_
 
 #define _MODL_( _ix_, _str_, _hid_ ) \
-    if (((( m_key_seq_map[ m_seq ].key_press[0]) & 0xff00)>>8) & _hid_ )\
+    if (((( m_key_seq_map[ m_seq ].params.keys.key_press[0]) & 0xff00)>>8) & _hid_ )\
     {\
         m_ks[0].mod_ix = _ix_;\
     }\
-    if ((( m_key_seq_map[ m_seq ].key_press[1] & 0xff00)>>8) & _hid_ )\
+    if ((( m_key_seq_map[ m_seq ].params.keys.key_press[1] & 0xff00)>>8) & _hid_ )\
     {\
         m_ks[0].mod_ix = _ix_;\
     }
@@ -1367,18 +1403,18 @@ void navputter_keycode_menu_class::prev_value(void)
 
 void navputter_keycode_menu_class::next_modifier(void)
 {
-    uint16_t km = m_key_seq_map[ m_seq ].key_press[ m_edit_key ] & 0xff00;
+    uint16_t km = m_key_seq_map[ m_seq ].params.keys.key_press[ m_edit_key ] & 0xff00;
     km = (km == 0) ? 0x0100 : km << 1;
-    m_key_seq_map[m_seq].key_press[m_edit_key] &= 0x00ff;
-    m_key_seq_map[m_seq].key_press[m_edit_key] |= km;
+    m_key_seq_map[m_seq].params.keys.key_press[m_edit_key] &= 0x00ff;
+    m_key_seq_map[m_seq].params.keys.key_press[m_edit_key] |= km;
 }
 
 void navputter_keycode_menu_class::prev_modifier(void)
 {
-    uint16_t km = m_key_seq_map[ m_seq ].key_press[ m_edit_key ] & 0xff00;
+    uint16_t km = m_key_seq_map[ m_seq ].params.keys.key_press[ m_edit_key ] & 0xff00;
     km = (km == 0) ? 0x8000 : (km >> 1) & 0xff00;
-    m_key_seq_map[m_seq].key_press[m_edit_key] &= 0x00ff;
-    m_key_seq_map[m_seq].key_press[m_edit_key] |= km;
+    m_key_seq_map[m_seq].params.keys.key_press[m_edit_key] &= 0x00ff;
+    m_key_seq_map[m_seq].params.keys.key_press[m_edit_key] |= km;
 }
 
 
@@ -1440,21 +1476,21 @@ void navputter_keycode_menu_class::format_key_action( uint8_t seq )
     switch( action )
     {
         case KA_KEY_SCANCODE_ACTION:
-            if ( m_key_seq_map[seq].key_press[0] ) 
+            if ( m_key_seq_map[seq].params.keys.key_press[0] ) 
             { 
-                format_scancode( m_key_seq_map[seq].key_press[0] ); 
+                format_scancode( m_key_seq_map[seq].params.keys.key_press[0] ); 
             }
-            if ( m_key_seq_map[seq].key_press[1] ) 
+            if ( m_key_seq_map[seq].params.keys.key_press[1] ) 
             { 
                 SERIAL.write(","); 
-                format_scancode( m_key_seq_map[seq].key_press[1]); 
+                format_scancode( m_key_seq_map[seq].params.keys.key_press[1]); 
             }
-            if ( m_key_seq_map[seq].hold_time )    
+            if ( m_key_seq_map[seq].params.keys.hold_time )    
             { 
                 SERIAL.print( " (Hold from %d to %d secs  => key seq %d)", 
-                    MIN_HOLD_TIME(m_key_seq_map[seq].hold_time),
-                    MAX_HOLD_TIME(m_key_seq_map[seq].hold_time),
-                    m_key_seq_map[seq].hold_action );
+                    MIN_HOLD_TIME(m_key_seq_map[seq].params.keys.hold_time),
+                    MAX_HOLD_TIME(m_key_seq_map[seq].params.keys.hold_time),
+                    m_key_seq_map[seq].params.keys.hold_action );
             }
             break;
         default:

@@ -1,6 +1,7 @@
 #ifndef __NAVPUTTER_H__
 #define __NAVPUTTER_H__ 
 
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -98,31 +99,50 @@ enum error_codes
 #define HOLD_TIME(_mint_, _maxt_ ) ((_mint_)&0x0f) | ((_maxt_)<<4)
 #define SCANCODE( mod, key ) ((((uint16_t)mod)<<8)|key)
 
-#define C_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( 0,  HID_KEYBOARD_SC_C)}
 
-#define ZOOM_IN_KEY        {KA_KEY_SCANCODE_ACTION, '1', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_EQUAL_AND_PLUS ), 0, HOLD_TIME(3,5), KEY_SEQ_20}      
-#define ZOOM_OUT_KEY       {KA_KEY_SCANCODE_ACTION, '3', SCANCODE( HID_KEYBOARD_MODIFIER_LEFTALT, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE)} /* alt - gives slow zoom out */
-#define FOLLOW_KEY         {KA_KEY_SCANCODE_ACTION, 'a', SCANCODE( 0, HID_KEYBOARD_SC_F2 )}                                              /* f2 is follow */
-#define ROUTE_KEY          {KA_KEY_SCANCODE_ACTION, 'b', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_R)}                    /* ctrl r is route */
-#define COLOR_KEY          {KA_KEY_SCANCODE_ACTION, 'c', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTALT,  HID_KEYBOARD_SC_C)}                    /* alt C is color change */
-#define MOB_KEY            {KA_KEY_SCANCODE_ACTION, 'd', SCANCODE(HID_KEYBOARD_MODIFIER_LEFTCTRL, HID_KEYBOARD_SC_SPACE)}                /* mob is ctrl space */ 
-#define TOGGLE_KEY_ARROWS  {KA_TOGGLE_KEY_ARROWS }}   /* toggler mouse, slow key, fast key*/
+// to use define ACT_KEYSEQ:
+//#define ACT_KEYSEQ(act,mod0,key0,mod1,key1,hold_min,hold_max,hold_act) ACT_KEYSEQ(act,mod0,key0,mod1,key1,hold_min_hold_max_hold_action) 
+#define ACT_KEYSEQ_1(act) ACT_KEYSEQ(act,0,0,0,0,0,0) 
+#define ACT_KEYSEQ_2(act,key0,mod0) ACT_KEYSEQ(act,key0,mod0,0,0,0,0) 
+#define ACT_KEYSEQ_3(act,key0,mod0,key1,mod1) ACT_KEYSEQ(act,key0,mod0,key1,mod1,0,0) 
+#define ACT_KEYSEQ_PULSE(act,port,pin,l1,l2,hold1,hold2,cycles,multime,mulcyc) \
+    ACT_KEYSEQ(act,\
+        ((port<<4)|pin),\
+        ((l1<<4)|l2),\
+        hold1,\
+        hold2,\
+        cycles,\
+        (multime << 4) | mulcyc)
+
+
+
+#define C_KEY              ACT_KEYSEQ_2(KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_C, 0)
+#define ZOOM_IN_KEY        ACT_KEYSEQ(  KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_EQUAL_AND_PLUS, HID_KEYBOARD_MODIFIER_LEFTALT, 0, 0, HOLD_TIME(3,5), KEY_SEQ_20)     /* alt + zoom in, hold from 3 to 5 seconds power off. */
+#define ZOOM_OUT_KEY       ACT_KEYSEQ_2(KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_MINUS_AND_UNDERSCORE, HID_KEYBOARD_MODIFIER_LEFTALT)                       /* alt - gives slow zoom out */
+#define FOLLOW_KEY         ACT_KEYSEQ_2(KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_F2, 0 )                                       /* f2 is follow */
+#define ROUTE_KEY          ACT_KEYSEQ_2(KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_R, HID_KEYBOARD_MODIFIER_LEFTCTRL)                                        /* ctrl r is route */
+#define COLOR_KEY          ACT_KEYSEQ_2(KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_C, HID_KEYBOARD_MODIFIER_LEFTALT)                                          /* alt C is color change */
+#define MOB_KEY            ACT_KEYSEQ_2(KA_KEY_SCANCODE_ACTION, HID_KEYBOARD_SC_SPACE, HID_KEYBOARD_MODIFIER_LEFTCTRL)                                      /* mob is ctrl space */ 
+#define TOGGLE_KEY_ARROWS  ACT_KESEQ_1( KA_TOGGLE_KEY_ARROW ) /* toggler mouse, slow key, fast key*/
 
 /* these mouse moves have 2 additional arguments, a slow key scancode, and a fast key scancodes used in the key arrow modes instead of mouse moves.
    so, MOUSE_UP will be a mouse action in key_arrow mode 0, an ALT up arrow in key_arrow mode 1 and an up arrow in key mode 2.                      */
-#define MOUSE_UP           {KA_MOUSE_UP,    '2', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_UP_ARROW ),    SCANCODE( 0,HID_KEYBOARD_SC_UP_ARROW)}  
-#define MOUSE_LEFT         {KA_MOUSE_LEFT,  '4', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_LEFT_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
-#define MOUSE_RIGHT        {KA_MOUSE_RIGHT, '6', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW ), SCANCODE( 0,HID_KEYBOARD_SC_LEFT_ARROW)}  
-#define MOUSE_DOWN         {KA_MOUSE_DOWN,  '8', SCANCODE(HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_DOWN_ARROW ),  SCANCODE( 0,HID_KEYBOARD_SC_DOWN_ARROW)}  
+#define MOUSE_UP           ACT_KEYSEQ_3(KA_MOUSE_UP,            HID_KEYBOARD_SC_UP_ARROW,       HID_KEYBOARD_MODIFIER_RIGHTALT,     HID_KEYBOARD_SC_UP_ARROW, 0)
+#define MOUSE_LEFT         ACT_KEYSEQ_3(KA_MOUSE_LEFT,          HID_KEYBOARD_SC_LEFT_ARROW,     HID_KEYBOARD_MODIFIER_RIGHTALT,     HID_KEYBOARD_SC_LEFT_ARROW, 0)
+#define MOUSE_RIGHT        ACT_KEYSEQ_3(KA_MOUSE_RIGHT,         HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_RIGHT_ARROW,   HID_KEYBOARD_SC_LEFT_ARROW, 0)
+#define MOUSE_DOWN         ACT_KEYSEQ_3(KA_MOUSE_DOWN,          HID_KEYBOARD_MODIFIER_RIGHTALT, HID_KEYBOARD_SC_DOWN_ARROW,    HID_KEYBOARD_SC_DOWN_ARROW, 0)
 
-#define MOUSE_LT_CLICK      {KA_MOUSE_LT_CLICK,0}
-#define MOUSE_RT_CLICK      {KA_MOUSE_RT_CLICK,0}
-#define SHOW_KEY            {KA_REPORT_KEY,0}
-#define TOGGLE_MOUSE_SPEED  {KA_MOUSE_STEP,0}
-#define POWER_CYCLE         {KA_POWER_CYCLE,0}
+#define MOUSE_LT_CLICK     ACT_KEYSEQ_1(KA_MOUSE_LT_CLICK)
+#define MOUSE_RT_CLICK     ACT_KEYSEQ_1(KA_MOUSE_RT_CLICK)
+#define SHOW_KEY           ACT_KEYSEQ_1(KA_REPORT_KEY)
+#define TOGGLE_MOUSE_SPEED ACT_KEYSEQ_1(KA_MOUSE_STEP)
+
+#define POWER_CYCLE        ACT_KEYSEQ_PULSE(KA_PULSE, PULSE_PORT_B,1,1,0,100,100,100,4,1)
+
+
 
 #if 0 /* 4x4 map */
-key_map_t   base_map[4][4] =
+action_map_t   base_map[4][4] =
 //[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
         { ZOOM_IN_KEY,            MOUSE_UP,             ZOOM_OUT_KEY,               FOLLOW_KEY },
@@ -131,7 +151,7 @@ key_map_t   base_map[4][4] =
         {{KA_MOUSE_LT_CLICK,'*'}, {KA_REPORT_KEY,'0'},  {KA_MOUSE_RT_CLICK,'#'},    MOB_KEY    }
 };
 //[MAX_KEY_ROWS][MAX_KEY_COLS] =
-key_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
+action_map_t   base_map[MAX_KEY_ROWS][MAX_KEY_COLS] =
 {
         { KP_KEY1, KP_KEY_2, KP_KEY_3, KP_KEY_4 },
         { KP_KEY5, KP_KEY_6, KP_KEY_7, KP_KEY_8 },
@@ -226,32 +246,29 @@ typedef struct __attribute__((packed)) eeprom_layout
 #define MAX_HOLD_TIME( _t_ ) (((_t_) & 0xf0) >> 4)
 
 
-
-typedef struct key_map
+typedef struct key_action
 {
-    uint8_t      action;                /* action on pressing the key */
-    uint8_t      unused;
-    union   
+    union
     {
-        uint16_t     key_press[2];          /* up to 2 keys pressed */
         uint8_t      key_press_8[4];
+        uint16_t     key_press[2];
     };
     uint8_t      hold_time;             /* bits 0-3 are min hold seconds bits 4-7 are max hold seconds */
     uint8_t      hold_action;           /* KA_SPECIAL_ACTION after holding between min and max time and releasing */
-}key_map_t;
+}key_action_t;
 
-
-typedef struct act_map
+typedef union action_union
 {
-    uint8_t     action;
-    uint8_t     params[7];
-}act_map_t;
+    key_action_t        keys;
+    uint8_t             raw[6];
+}action_union_t;
 
-union key_union
+typedef struct action_map
 {
-    key_map_t   key_seq;
-    act_map_t   act_seq;
-};
+    uint8_t         action;                
+    action_union_t  params;
+}action_map_t;
+
 
 
 void poll_buttons(void);
@@ -270,23 +287,68 @@ void cmd_mapm( FILE *fp, char *str );
 #define KA_TO_NP_MOUSE_DIR( ka ) ((ka)-KA_MOUSE_UP)
 
 #define NO_FIELDS\
-    _KA_KF_( 0, 0, 0, unused, 0, 0 )
+    _KA_KF_( 0, 0, 0, action, 0, 0 )
 
+/*
+ * for key sequences, there are 2 possible keys that can be pressed, pluss a hold action if you hold the key down
+ * for a specified time. The key_map struct is overloaded like so:
+ *
+ *      key_press_8[0] = key 0 value
+ *      key_press_8[1] = key 0 modifier
+ *      key_press_8[2] = key 1 value
+ *      key_press_8[2] = key 1 modifier
+ *      hold_time & 0xf0 = min hold time
+ *      hold_time & 0x0f = max hold time
+ *      hold_action      = enum from KP_KEY_LIST for the action to run  
+ */
+ 
 #define KEY_FIELDS\
-    _KA_KF_( KEY_VAL_0,         0, 0xff,                key_press_8[0], 0xff, 0 ) \
-    _KA_KF_( KEY_MOD_0,         0, 0xff,                key_press_8[1], 0xff, 0 ) \
-    _KA_KF_( KEY_VAL_1,         0, 0xff,                key_press_8[2], 0xff, 0 ) \
-    _KA_KF_( KEY_MOD_1,         0, 0xff,                key_press_8[3], 0xff, 0 ) \
-    _KA_KF_( KEY_HOLD_TIME_MIN, 0, 0xff,                hold_time,      0xf0, 4 ) \
-    _KA_KF_( KEY_HOLD_TIME_MAX, 0, 0xff,                hold_time,      0x0f, 0 ) \
-    _KA_KF_( HOLD_ACTION,       0, MAX_KEY_SEQUENCES,   hold_action,    0xff, 8 ) \
+    _KA_KF_( KEY_VAL_0,         0, 0xff,                params.keys.key_press_8[0], 0xff, 0 ) \
+    _KA_KF_( KEY_MOD_0,         0, 0xff,                params.keys.key_press_8[1], 0xff, 0 ) \
+    _KA_KF_( KEY_VAL_1,         0, 0xff,                params.keys.key_press_8[2], 0xff, 0 ) \
+    _KA_KF_( KEY_MOD_1,         0, 0xff,                params.keys.key_press_8[3], 0xff, 0 ) \
+    _KA_KF_( KEY_HOLD_TIME_MIN, 0, 0xff,                params.keys.hold_time,      0xf0, 4 ) \
+    _KA_KF_( KEY_HOLD_TIME_MAX, 0, 0xff,                params.keys.hold_time,      0x0f, 0 ) \
+    _KA_KF_( HOLD_ACTION,       0, MAX_KEY_SEQUENCES,   params.keys.hold_action,    0xff, 8 ) \
 /* end of KEY_FIELDS */
+
+
+enum port_numbers
+{
+    PULSE_PORT_B=0,
+    PULSE_PORT_C,
+    PULSE_PORT_D,
+    PULSE_PORT_E,
+    PULSE_PORT_F
+};
+
+
+#define PULSE_FIELDS\
+    _KA_KF_( PULSE_PORT,        0, 5,                   params.raw[0], 0xf0, 4 )\
+    _KA_KF_( PULSE_PIN,         0, 7,                   params.raw[0], 0x0f, 0 )\
+    _KA_KF_( PULSE_LEVEL1,      0, 1,                   params.raw[1], 0xf0, 4 )\
+    _KA_KF_( PULSE_LEVEL2,      0, 1,                   params.raw[1], 0x0f, 0 )\
+    _KA_KF_( PULSE_HOLD_TIME1,  0, 0xff,                params.raw[2], 0xff, 0 )\
+    _KA_KF_( PULSE_HOLD_TIME2,  0, 0xff,                params.raw[3], 0xff, 0 )\
+    _KA_KF_( PULSE_CYCLES,      0, 0xff,                params.raw[4], 0xff, 0 )\
+    _KA_KF_( PULSE_TIME_MUL,    0, 0xf0,                params.raw[5], 0xf0, 4 )\
+    _KA_KF_( PULSE_CYCLES_MUL,  0, 0x0f,                params.raw[5], 0x0f, 0 )\
+/* end of PULSE_FIELDS */
+
 enum 
 {
 #define _KA_KF_( _ev_, _min_, _max_, _field_, _mask_, _shift_ ) _ev_,
     KEY_FIELDS
 #undef _KA_KF_
 };
+
+enum 
+{
+#define _KA_KF_( _ev_, _min_, _max_, _field_, _mask_, _shift_ ) _ev_,
+    PULSE_FIELDS
+#undef _KA_KF_
+};
+
 
 #define KEY_ACTION_LIST\
     _KA_( KA_NO_ACTION,             "Nothing",    NO_FIELDS)\
@@ -305,6 +367,7 @@ enum
     _KA_( KA_REPORT_KEY,            "Show Key",   NO_FIELDS)\
     _KA_( KA_TOGGLE_KEY_ARROWS,     "ToggleMov",  NO_FIELDS)\
     _KA_( KA_POWER_CYCLE,           "PowerCycle", NO_FIELDS)\
+    _KA_( KA_PULSE,                 "GPIOPulse",  PULSE_FIELDS)\
 /* end of KEY_ACTION_LIST */
 
 
@@ -1283,7 +1346,7 @@ private:
     uint8_t         m_edit_key;
     keyedit_state_t m_ks[2]; 
     uint8_t         m_key_map[MAX_KEY_ROWS][MAX_KEY_COLS];
-    key_map_t       m_key_seq_map[MAX_KEY_SEQUENCES];
+    action_map_t    m_key_seq_map[MAX_KEY_SEQUENCES];
     uint8_t         m_seq;
 #define MAX_INT_SIZE 8 
     uint8_t         m_int_value[ MAX_INT_SIZE ];
@@ -1359,14 +1422,7 @@ public:
 #undef _KM_
     }
 
-    void set_seq_map( void )
-    {
-#define KP_KEY( _sc_, _ev_, _act_, _x_, _y_ ) \
-        m_seq_map[_ev_]=_act_;
-        KP_KEY_LIST
-#undef KP_KEY
-    }
-
+    void set_seq_map( void );
 
     void poll()
     {
@@ -1381,7 +1437,7 @@ public:
         return  (uint8_t *)m_cur_map;
     }
 
-    key_map_t *get_seq_map(void)
+    action_map_t *get_seq_map(void)
     {
         return  m_seq_map;
     }
@@ -1402,7 +1458,8 @@ public:
     navputter_menu_base_class   *m_cur_menu;
     eeprom_header_t             m_config;
     uint8_t                     m_cur_map[MAX_KEY_ROWS][MAX_KEY_COLS];
-    key_map_t                   m_seq_map[MAX_KEY_SEQUENCES];
+    action_map_t                m_seq_map[MAX_KEY_SEQUENCES];
+
     bool                        m_eeprom_dirty;
 };
 
