@@ -55,7 +55,8 @@ void navputter_class::set_seq_map( void )
         m_seq_map[_ev_] = _init_;
         KP_KEY_LIST
 #undef KP_KEY
-}
+
+} 
 
 void* operator new(size_t objsize) 
 { 
@@ -226,38 +227,33 @@ int navputter_serial_class::read(void)
 
 
 
-const char show_key_string[] PROGMEM = "show key r:%d c:%d seq:%d\n\r";
-
 void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
 {
-//    row = (CONFIG.flip_rows)?CONFIG.rows - row - 1:row;
-//    col = (CONFIG.flip_cols)?CONFIG.cols - col - 1:col;
-
     uint8_t seq = myputter.m_cur_map[row][col];
-    uint8_t action = myputter.m_seq_map[seq].action;
+    uint8_t act=0;
+    uint32_t delta;
     static uint32_t last_hold = 0;
 
+    act= myputter.m_seq_map[seq].action;
     if ( myputter.m_seq_map[seq].params.keys.hold_action )
     {
         if (event == EVENT_KEYPAD_UP)
         {
-            uint32_t delta = global_ticks - last_hold;
-            delta /= 1000;
-            if ( delta >= MIN_HOLD_TIME( myputter.m_seq_map[seq].params.keys.hold_time ) &&  
-            ( delta <= MAX_HOLD_TIME( myputter.m_seq_map[seq].params.keys.hold_time) ) )
+            delta = global_ticks - last_hold;
+            if ( delta >= (MIN_HOLD_TIME( myputter.m_seq_map[seq].params.keys.hold_time ) * 1000) &&  
+            ( delta <= (MAX_HOLD_TIME( myputter.m_seq_map[seq].params.keys.hold_time) ) * 1000) )
             {
-                action = myputter.m_seq_map[seq].params.keys.hold_action;
-                SERIAL.print("hold time %d actoin %d\n\r", delta, action );
+                seq = myputter.m_seq_map[seq].params.keys.hold_action;
+                act = myputter.m_seq_map[seq].action;
             }
         }
         else
         {
             last_hold = global_ticks;
-            SERIAL.print("last hold =%ld\n",last_hold);
         } 
     }       
-
-    switch(action)
+ 
+    switch(act)
     {
         case KA_KEY_SCANCODE_ACTION:
             if ( event == EVENT_KEYPAD_DOWN )
@@ -276,7 +272,7 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
         case KA_MOUSE_DOWN:
             if ( CONFIG.key_arrows == ARROW_CONFIG_MOUSE )
             { 
-                MOUSE.set_dir( KA_TO_NP_MOUSE_DIR(action), (event == EVENT_KEYPAD_DOWN )?CONFIG.mouse_step:0 ); 
+                MOUSE.set_dir( KA_TO_NP_MOUSE_DIR(act), (event == EVENT_KEYPAD_DOWN )?CONFIG.mouse_step:0 ); 
             }
             else if ( CONFIG.key_arrows == ARROW_CONFIG_SLOW_KEY )
             {
@@ -307,27 +303,11 @@ void navputter_keypad_class::press(uint8_t event, uint8_t row, uint8_t col)
             }
             break;
         case KA_PULSE:
-            SERIAL.print("pulse\n\r");
-/*
-            SERIAL.print("A pulse port=%c, pin=%d, l1=%d, l2=%d, hold1=%d, hold2=%d, cyc=%d, mulhold=%d, mulcyc=%d\n\r",
-                ((myputter.m_seq_map[seq].params.raw[0] & 0xf0) >> 4) + 'B',
-                myputter.m_seq_map[seq].params.raw[0] & 0x0f,
-                myputter.m_seq_map[seq].params.raw[1] & 0xf0,
-                myputter.m_seq_map[seq].params.raw[1] & 0x0f,
-                myputter.m_seq_map[seq].params.raw[2],
-                myputter.m_seq_map[seq].params.raw[3],
-                myputter.m_seq_map[seq].params.raw[4],
-                (myputter.m_seq_map[seq].params.raw[5] & 0xf0) >> 4,
-                myputter.m_seq_map[seq].params.raw[5] & 0x0f
-              );
-*/
+            myputter.start_pulse(seq);
             break;
- //    navputter_worker_pulse_class   work;
-//    work.begin('d', 1, 10, 0, 10, 100 );
-//    WORKERS.start_job( &work );
-                
+              
         default:
-            assert(0);
+            SERIAL.print("default?\n\r");
             break;
     }
 }
@@ -559,6 +539,22 @@ void navputter_eeprom_class::init(void)
             myputter.read_eeprom_keymap();
         }
     }
+}
+void navputter_class::start_pulse(uint8_t seq)
+{
+    m_pulse.begin( 
+        'b' + PULSEMAP_PORT(seq), 
+        PULSEMAP_PIN(seq), 
+        PULSEMAP_LEVEL0(seq), 
+        PULSEMAP_LEVEL1(seq),
+        PULSEMAP_HOLD0(seq), 
+        PULSEMAP_HOLD1(seq),
+        PULSEMAP_CYCLES(seq), 
+        PULSEMAP_MULTIME(seq), 
+        PULSEMAP_MULCYCLES(seq) 
+    );
+    WORKERS.start_job( &m_pulse );
+    
 }
 
 
@@ -906,12 +902,9 @@ void navputter_gpio_menu_class::begin(void)
 
 void navputter_gpio_menu_class::usage(void)
 {
-    SERIAL.print("%sGPIO Menu:%s", EOLN, EOLN);
 #if LEAN_N_MEAN 
-    #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.write("\t"); SERIAL.write( _cmd_ ); SERIAL.write( "  <PORT>" ); if (_params_) SERIAL.write("<value>"); SERIAL.write( EOLN );
-        GPIO_MENU
-    #undef _GM_
 #else
+    SERIAL.print("%sGPIO Menu:%s", EOLN, EOLN);
     #define _GM_( _cmd_, _func_,  _params_, _desc_ ) SERIAL.print( "%c)       %s%s", _cmd_, _desc_, EOLN );
         GPIO_MENU
     #undef _GM_
@@ -1639,19 +1632,45 @@ void navputter_worker_class::run_job( void )
     }
 }
 
+void navputter_worker_pulse_class::begin(
+        uint8_t    port,
+        uint8_t    pin,
+        uint8_t    pin_state_1,
+        uint8_t    pin_state_2,
+        uint8_t    hold_time_1,
+        uint8_t    hold_time_2,
+        uint8_t    cycles,
+        uint8_t    multime,
+        uint8_t    mulcycles
+    )
+{
+        m_port = port;
+        m_pin = pin;
+        m_pin_state_1 = pin_state_1;
+        m_pin_state_2 = pin_state_2;
+        m_hold_time_1 = hold_time_1;
+        m_hold_time_2 = hold_time_2;
+        m_cycles = cycles;
+        m_mul_time = multime;
+        m_mul_cycles = mulcycles;
+        SERIAL.print("pulse starting %c %d %d %d %d %d %d %d %d\n\r", port, pin, pin_state_1, pin_state_2, hold_time_1, hold_time_2, cycles, multime, mulcycles );
+}
 
 void navputter_worker_pulse_class::start( void )
 {
+    SERIAL.print("pulse start\n\r");
     set_state(WORKER_PULSE_ON);
 }
 
 
 void navputter_worker_pulse_class::pulse_on(void)
 {
+    SERIAL.print("pulse on\n\r");
 }
 
 void navputter_worker_pulse_class::pulse_off(void)
 {
+    SERIAL.print("pulse off\n\r");
 }
 
 
