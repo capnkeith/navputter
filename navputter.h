@@ -207,7 +207,7 @@ enum key_seq_enum
 #define SHOW_KEY           ACT_KEYSEQ_1(KA_REPORT_KEY)
 #define TOGGLE_MOUSE_SPEED ACT_KEYSEQ_1(KA_MOUSE_STEP)
 
-#define POWER_CYCLE        ACT_KEYSEQ_PULSE(KA_PULSE, PULSE_PORT_B,1,1,0,100,100,100,4,1)
+#define POWER_CYCLE        ACT_KEYSEQ_PULSE(KA_PULSE, PULSE_PORT_C,7,1,0,100,100,10,2,0)
 
 
 
@@ -703,11 +703,9 @@ private:
     uint8_t m_pin;
     uint8_t m_pin_state_1;
     uint8_t m_pin_state_2;
-    uint8_t m_hold_time_1;
-    uint8_t m_hold_time_2;
-    uint8_t m_cycles;
-    uint8_t m_mul_time;
-    uint8_t m_mul_cycles;
+    uint32_t m_hold_time_1;
+    uint32_t m_hold_time_2;
+    uint32_t m_cycles;
     uint8_t  m_next_state;
     uint32_t m_wait_until;
 };

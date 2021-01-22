@@ -1650,27 +1650,52 @@ void navputter_worker_pulse_class::begin(
         m_pin_state_2 = pin_state_2;
         m_hold_time_1 = hold_time_1;
         m_hold_time_2 = hold_time_2;
+        while(multime--)
+        {
+            m_hold_time_1 = m_hold_time_1 << 1;
+            m_hold_time_2 = m_hold_time_2 << 1;
+        }
+         
         m_cycles = cycles;
-        m_mul_time = multime;
-        m_mul_cycles = mulcycles;
-        SERIAL.print("pulse starting %c %d %d %d %d %d %d %d %d\n\r", port, pin, pin_state_1, pin_state_2, hold_time_1, hold_time_2, cycles, multime, mulcycles );
+        while(mulcycles--)
+        {
+            m_cycles = m_cycles << 1;
+        }
 }
 
 void navputter_worker_pulse_class::start( void )
 {
-    SERIAL.print("pulse start\n\r");
     set_state(WORKER_PULSE_ON);
 }
 
 
+#define PULSE_LVL( _port_, _pin_, _val_ )\
+    _port_ &= ~(1<<_pin_);\
+    _port_ |= (_val_ << _pin_);\
+
 void navputter_worker_pulse_class::pulse_on(void)
 {
-    SERIAL.print("pulse on\n\r");
+    switch(m_port)
+    {
+        case 'b' : PULSE_LVL(PORTB,m_pin,m_pin_state_1); break;
+        case 'c' : PULSE_LVL(PORTC,m_pin,m_pin_state_1); break;
+        case 'd' : PULSE_LVL(PORTD,m_pin,m_pin_state_1); break;
+        case 'e' : PULSE_LVL(PORTE,m_pin,m_pin_state_1); break;
+        case 'f' : PULSE_LVL(PORTF,m_pin,m_pin_state_1); break;
+    }
 }
 
 void navputter_worker_pulse_class::pulse_off(void)
 {
-    SERIAL.print("pulse off\n\r");
+    switch(m_port)
+    {
+        case 'b' : PULSE_LVL(PORTB,m_pin,m_pin_state_2); break;
+        case 'c' : PULSE_LVL(PORTC,m_pin,m_pin_state_2); break;
+        case 'd' : PULSE_LVL(PORTD,m_pin,m_pin_state_2); break;
+        case 'e' : PULSE_LVL(PORTE,m_pin,m_pin_state_2); break;
+        case 'f' : PULSE_LVL(PORTF,m_pin,m_pin_state_2); break;
+    }
+    SERIAL.print("off\n\r");
 }
 
 
@@ -1683,20 +1708,20 @@ void navputter_worker_pulse_class::run_job( void )
             pulse_on();
             set_state( WORKER_WAITING );
             m_wait_until = global_ticks + m_hold_time_1;
-            m_next_state = (m_cycles)? WORKER_PULSE_OFF : WORKER_DONE;
+            m_next_state = WORKER_PULSE_OFF;
             break;
         case WORKER_PULSE_OFF:
             pulse_off();
             set_state( WORKER_WAITING );
             m_wait_until = global_ticks + m_hold_time_2;
-            m_next_state = (m_cycles)? WORKER_PULSE_ON : WORKER_DONE;
+            m_next_state =WORKER_PULSE_ON;
             break; 
 
         case WORKER_WAITING:
             if ( global_ticks >= m_wait_until )
             {
-                set_state( m_next_state );
                 m_cycles = ( m_cycles == WORK_CYCLES_INFINITE )? m_cycles : m_cycles-1;
+                set_state( (m_cycles)? m_next_state : WORKER_DONE );
             }
             break;
         default:
